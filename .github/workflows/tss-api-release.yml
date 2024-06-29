@@ -40,14 +40,17 @@ jobs:
           go-version: ${{ matrix.go }}
 
       - name: Run build and prepare target files
+        id: build-version
         run: |
-          CGO_ENABLED=0 go build -trimpath -o bin/rosenTss-${{ matrix.platform }}-${{ github.ref_name }}${{ matrix.extension }}
+          match_version=$(echo "${{ github.ref_name }}" | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+')
+          echo "appVersion=${match_version}" >> $GITHUB_OUTPUT
+          CGO_ENABLED=0 go build -trimpath -o bin/rosenTss-${{ matrix.platform }}-${match_version}${{ matrix.extension }}
           mkdir conf
           mv conf.env.sample conf/conf.env
 
       - name: Prepare Release File
         run: |
-          7z a rosenTss-${{ matrix.platform }}-${{ github.ref_name }}.zip ./bin/rosenTss-${{ matrix.platform }}-${{ github.ref_name }} ./conf
+          7z a rosenTss-${{ matrix.platform }}-${{ steps.build-version.outputs.appVersion }}.zip ./bin/rosenTss-${{ matrix.platform }}-${{ steps.build-version.outputs.appVersion }}${{ matrix.extension }} ./conf
 
       - name: Upload Release File
         uses: softprops/action-gh-release@v1

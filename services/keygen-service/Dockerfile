@@ -10,10 +10,12 @@ RUN adduser --disabled-password --home /app --uid 8080 --gecos "ErgoPlatform" er
 USER ergo
 
 WORKDIR /app
-COPY --chmod=700 --chown=ergo:ergo package*.json ./
-ADD --chmod=700 --chown=ergo:ergo ./patches/ ./patches/
+COPY --chmod=700 --chown=ergo:ergo package-lock.json ./
+COPY --chmod=700 --chown=ergo:ergo ./services/keygen-service/package.json ./
+ADD --chmod=700 --chown=ergo:ergo ./services/keygen-service/patches/ ./patches/
+RUN npm prune --production
 RUN npm ci
-COPY --chmod=700 --chown=ergo:ergo . .
+COPY --chmod=700 --chown=ergo:ergo ./services/keygen-service .
 RUN npm run build
 
 ENV NODE_ENV=production

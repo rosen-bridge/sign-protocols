@@ -22,17 +22,9 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Download Release From tss-api
-        uses: dsaltares/fetch-gh-release-asset@1.1.1
-        with:
-          repo: 'rosen-bridge/tss-api'
-          version: 'latest'
-          regex: true
-          file: 'rosenTss-linux-*'
-          target: './services/keygen-servic/bin/'
-
       - name: Move the Files
         run: |
+          npx @rosen-bridge/cli@${{ vars.ROSEN_CLI_VERSION || 'latest' }} download-tss -n linux -r -t tss-api -o ./bin/
           mv ./docker/production.yaml ./config/
           mv ./docker/custom-environment-variables.yaml ./config/
           7z x ./bin/rosenTss-linux-* -obin/ && rm -rf ./bin/*.zip
@@ -65,7 +57,8 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v4
         with:
-          context: ./services/keygen-service/
+          context: .
+          file: ./services/keygen-service/Dockerfile
           platforms: ${{ vars.PLATFORM_LIST || 'linux/amd64' }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
