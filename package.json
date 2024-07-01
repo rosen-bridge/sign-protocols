@@ -15,7 +15,11 @@
     "prepare": "husky install",
     "release": "npm run release --workspaces",
     "test": "npm run test --workspaces",
-    "type-check": "npm run type-check --workspaces"
+    "type-check": "npm run type-check --workspaces",
+    "postinstall": "patch-package"
+  },
+  "dependencies": {
+    "patch-package": "^6.5.1"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^5.28.0",

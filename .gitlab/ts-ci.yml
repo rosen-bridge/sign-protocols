@@ -1,4 +1,4 @@
-image: node:20.10.0
+image: node:20.11.0
 
 stages:
   - installation
@@ -30,6 +30,7 @@ type_check:
       - '**/dist'
   script:
     - npm run type-check --workspace packages
+    - npm run type-check --workspace services/keygen-service
 
 lint:
   stage: lint
@@ -43,6 +44,7 @@ lint:
       - '**/dist'
   script:
     - npm run lint --workspace packages
+    - npm run lint --workspace services/keygen-service
 
 test:
   stage: test

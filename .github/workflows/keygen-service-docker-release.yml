@@ -1,0 +1,64 @@
+name: Build and Push Docker Image for Keygen Service
+
+on:
+  push:
+    branches:
+      - dev
+    tags:
+      - keygen-service-*
+
+jobs:
+  build:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: ./services/keygen-service
+
+    steps:
+      - name: Checkout the Code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Move the Files
+        run: |
+          npx @rosen-bridge/cli@${{ vars.ROSEN_CLI_VERSION || 'latest' }} download-tss -n linux -r -t tss-api -o ./bin/
+          mv ./docker/production.yaml ./config/
+          mv ./docker/custom-environment-variables.yaml ./config/
+          7z x ./bin/rosenTss-linux-* -obin/ && rm -rf ./bin/*.zip
+          mv ./bin/rosenTss-* ./bin/rosenTss
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+        with:
+          platforms: ${{ vars.PLATFORM_LIST || 'linux/amd64' }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Login to Docker Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: rosen-bridge
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker Metadata action
+        uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ghcr.io/rosen-bridge/keygen-service
+          tags: |
+            type=ref,event=branch
+            type=match,pattern=\d.\d.\d
+
+      - name: Build and push
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./services/keygen-service/Dockerfile
+          platforms: ${{ vars.PLATFORM_LIST || 'linux/amd64' }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}

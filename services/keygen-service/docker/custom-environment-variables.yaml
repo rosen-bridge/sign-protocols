@@ -1,0 +1,4 @@
+---
+api:
+  host: 'HOSTNAME'
+  port: 'SERVICE_PORT'
