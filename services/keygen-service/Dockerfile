@@ -14,6 +14,7 @@ COPY --chmod=700 --chown=ergo:ergo package-lock.json ./
 COPY --chmod=700 --chown=ergo:ergo ./services/keygen-service/package.json ./
 ADD --chmod=700 --chown=ergo:ergo ./patches/ ./patches/
 RUN npx patch-package
+# We need to run npm prune --production because some packages in package-lock.json are redundant for the keygen-service package.
 RUN npm prune --production
 RUN npm ci
 COPY --chmod=700 --chown=ergo:ergo ./services/keygen-service .
