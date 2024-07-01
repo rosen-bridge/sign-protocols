@@ -41,8 +41,6 @@ import WinstonLogger from '@rosen-bridge/winston-logger';
 
 const logger = WinstonLogger.getInstance().getLogger(import.meta.url);
 
-// TODO: Need to write test for This package
-//  https://git.ergopool.io/ergo/rosen-bridge/ts-guard-service/-/issues/21
 class Dialer {
   private static instance: Dialer;
 
@@ -277,15 +275,9 @@ class Dialer {
   };
 
   /**
-   * TODO: This method is not written in arrow form because ts-mockito has some
-   * issues with mocking class fields which are of type arrow function. If you
-   * are going to convert it to an arrow method, make sure all tests pass without
-   * issue.
-   */
-  /**
    * send message to specific peer or broadcast it
-   * @param channel: String
-   * @param msg: string
+   * @param channel
+   * @param msg
    * @param receiver optional
    */
   async sendMessage(channel: string, msg: string, receiver?: string) {

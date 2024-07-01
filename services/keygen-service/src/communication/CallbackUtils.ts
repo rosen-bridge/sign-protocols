@@ -40,7 +40,7 @@ const apiCallBack: SubscribeChannelWithURL['func'] = (
         );
       } else if (error.request) {
         logger.debug(
-          `The request was made but no response was received. Make sure TSS is up and accessible.`,
+          `The request was made but no response was received. Make sure your service is up and accessible.`,
           {
             code: error.code,
           },
