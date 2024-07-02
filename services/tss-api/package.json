@@ -1,6 +1,6 @@
 {
   "name": "tss-api",
-  "version": "1.7.0",
+  "version": "2.0.1",
   "description": "a service for Threshold Signature Scheme, for ECDSA and EDDSA",
   "repository": "",
   "license": "GPL-3.0",
