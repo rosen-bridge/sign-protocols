@@ -17,7 +17,7 @@
     "test": "npm run test --workspaces",
     "type-check": "npm run type-check --workspaces",
     "postinstall": "patch-package",
-    "version": "npx changeset version && npm i"
+    "version": "npx changeset version && npm i && npx changeset --empty"
   },
   "dependencies": {
     "patch-package": "^6.5.1"
