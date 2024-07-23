@@ -31,7 +31,10 @@
     "eslint-config-prettier": "^8.5.0",
     "husky": "^8.0.1",
     "lint-staged": "^13.0.3",
-    "prettier": "^3.2.4"
+    "prettier": "^3.2.4",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.16.2",
+    "typescript": "^5.5.3"
   },
   "engines": {
     "node": ">=20.10.0"

@@ -2,12 +2,6 @@ import * as wasm from 'ergo-lib-wasm-nodejs';
 import { AbstractLogger } from '@rosen-bridge/abstract-logger';
 import { MultiSigUtils } from './MultiSigUtils';
 
-interface Sign {
-  signed: Array<string>;
-  simulated: Array<string>;
-  transaction: Uint8Array;
-}
-
 interface ApproveSigner {
   id: string;
   challenge: string;
@@ -31,8 +25,19 @@ interface SingleCommitmentJson {
   position: string;
 }
 
+interface SingleProofJson {
+  hint: string,
+  pubkey: {
+    op: string,
+    h: string,
+  },
+  challenge: string,
+  proof: string,
+  position: string
+}
+
 interface CommitmentJson {
-  secretHints: { [index: string]: Array<SingleCommitmentJson> };
+  secretHints: { [index: string]: Array<SingleProofJson> };
   publicHints: { [index: string]: Array<SingleCommitmentJson> };
 }
 
@@ -41,9 +46,10 @@ interface TxQueued {
   boxes: Array<wasm.ErgoBox>;
   dataBoxes: Array<wasm.ErgoBox>;
   secret?: wasm.TransactionHintsBag;
-  sign?: Sign;
-  commitments: Array<PublishedCommitment | undefined>;
-  commitmentSigns: Array<string>;
+  simulatedBag?: wasm.TransactionHintsBag;
+  signs: Record<string, PublishedProof>
+  commitments: Record<string, PublishedCommitment>
+  commitmentSigns: Record<string, string>
   resolve?: (value: wasm.Transaction | PromiseLike<wasm.Transaction>) => void;
   reject?: (reason?: any) => void;
   createTime: number;
@@ -71,8 +77,18 @@ interface SingleCommitment {
   position: string;
 }
 
+interface SingleProof {
+  proof: string;
+  position: string;
+}
+
+
 interface PublishedCommitment {
   [index: string]: Array<SingleCommitment>;
+}
+
+interface PublishedProof {
+  [index: string]: Array<SingleProof>;
 }
 
 interface CommitmentPayload extends GeneralPayload {
@@ -80,28 +96,34 @@ interface CommitmentPayload extends GeneralPayload {
   commitment: PublishedCommitment;
 }
 
-interface SignedCommitment {
-  index: number;
-  commitment: PublishedCommitment;
-  sign: string;
+interface InitiateSignPayload extends GeneralPayload {
+  txId: string;
+  committedInds: Array<number>;
+  cmts: Array<PublishedCommitment>;
+  simulated: Array<PublishedCommitment>;
+  simulatedProofs: Array<PublishedProof>;
 }
 
 interface SignPayload extends GeneralPayload {
-  tx: string;
+  proof: PublishedProof;
   txId: string;
-  signed: Array<string>;
-  simulated: Array<string>;
-  commitments: Array<SignedCommitment>;
+}
+
+interface signedTxPayload extends GeneralPayload {
+  txBytes: string;
 }
 
 type Payload =
   | RegisterPayload
   | ApprovePayload
   | CommitmentPayload
-  | SignPayload;
+  | InitiateSignPayload
+  | SignPayload
+  | signedTxPayload;
+
 
 interface CommunicationMessage {
-  type: 'register' | 'approve' | 'commitment' | 'sign';
+  type: 'register' | 'approve' | 'commitment' | 'sign' | 'initiateSign' | 'signedTx';
   sign?: string;
   payload: Payload;
 }
@@ -129,4 +151,8 @@ export {
   PublishedCommitment,
   SingleCommitment,
   ErgoMultiSigConfig,
+  InitiateSignPayload,
+  SingleProof,
+  PublishedProof,
+  signedTxPayload
 };

@@ -1,0 +1,65 @@
+
+/**
+ * {
+ *     "pubs": [
+ *         "032282bafc78f565307794abb1ca4e8e7beb30aab5b8b9d0b1c8d8ea7a74e60a80",
+ *         "037fcf9fcd4c13a6a154b9ec61f3b823d2cfbc9dddf0d8a04f39ae1725408e38fe",
+ *         "0295e3146bbb1cac5bd9f41881bece6942f8af8531ff176cc2af1381310af965e4",
+ *         "03a3cbb5a3d101767563c79af30b826eea1f0a01b694cf25cf38a7b42fd606320b",
+ *         "03aeebb4d52d48c56021c4d2b140ef4eca430ad34ed730111c8ad7cc2e8a478935",
+ *         "036f077fa08526f0128c704a6a98cdc924e7add0c814169aaaae76c935f519aee6",
+ *         "028d1cfbdc81c2a1575074ef761454cf6d8a339eecfa1b2afb052bfc2172e322e5",
+ *         "02219e9dd9e7360cde44222c6b4a59fd4ee6b43f72a0dc20425451197f1c06a209",
+ *         "03dabaa32b3b327c4239b8d3c78d40f7c0170a6a2ead79110b64a1b35f0951fe92",
+ *         "02965907f60c6b4cd33dde56c97387ff8653374e0c64c0ce6b0a65e78877afdc4d"
+ *     ],
+ *     "privs": [
+ *         "7b7c4ea8c3ac7ca29e546822f4a3d1728f2746315b8ba4774bdddb2300b6b5ed",
+ *         "6b2f145626ea1eacb14396390a400eb384310ab25075644df5a6097d79fc8d7c",
+ *         "4e98f5491acd037f56908a6cc31add661bb223e6601048197301ff8b04d358b0",
+ *         "b7d566dee4b38c26e631471c075ce1ec0fa015bb1eee563edfa1917f08bdc74f",
+ *         "99c50aa771cbbf9e073b42c4792fa47f0827587087f34d98fad33cce5ba72854",
+ *         "7ca9c5e89a836145fab1844a7d117f829c4f60285c5f0618db5160689f956a89",
+ *         "d10ee824c85120e3b8b23a5a4fca7722c19335349165a86ee7350efcccba03a3",
+ *         "f30de0366c38effbfee91e0dbc89818f78833737d3e350b3790c9bfb08f200fe",
+ *         "3f108d3a4dc641e5c107a9b6a135001c764568fe0bf3b437b3f392e4848318aa",
+ *         "b5e1491940c19de7870c1129a00ebee440278e9eaf86e00163fe532789d147e2"
+ *     ],
+ *     "addrs": [
+ *         "9gj1DiadSrxkrdbR3zT5mHUZaSb6CtvE1nTFZSqNvGAZoGqo8wf",
+ *         "9hS6TDBDof67yaEZCXZaweEfepogzif6Sm4bXuP9ULnwuTQ95DQ",
+ *         "9ff5BHCWC7hbGLxJwxfwFnBjz8U7hhk5foKSL17QuK63RnMdrD1",
+ *         "9hhwdiK7No7CBwV5aiFqCRUR2FFSkMhCENnHdUcePATQmr41VwB",
+ *         "9hnqojstYTDH4HY7jS8EUUDNn5jwJRoZxvu3asvk42EKAZqYC16",
+ *         "9hJhnXDwQWUiwckBGau5GH192e1YwhmpZn1VF8d4xsZuFZfEZNG",
+ *         "9fbD4bUFbsA8jEZUbymcYmiBRaYkFrreHMUeWJfLeorfyFcwMdP",
+ *         "9emsHLY1EqtBcaapsHREmMDHKRBfS1tiF4qrKoUvAYWKWHHrajC",
+ *         "9i88qBTVZfss48XF1KaDmRZ3PF6bUSeREKabY4u8eYAAJD4y4gi",
+ *         "9ffGwthUK1Y84jCnRtnCkxRachCPYyBkCXuyDkvqFfzv1VHjQNV"
+ *     ],
+ *     "mnems": [
+ *         "exercise behave captain drop method travel elbow extend silly shadow task picnic",
+ *         "blanket seat foil drink crazy light palace settle nice awesome build wisdom",
+ *         "dad consider language silent usual coin curious uncover iron shallow enrich scorpion",
+ *         "worry pen connect pill pitch number advance royal trial element inside salad",
+ *         "odor dawn mix armed idle swap trumpet soldier feature twelve border luggage",
+ *         "tag protect cute boost deer amateur fitness jump drill fatal wrestle puppy",
+ *         "nuclear insect convince trophy sudden two ecology yellow depth tomorrow demise toe",
+ *         "swing heart young distance chat leave dignity fabric love notice someone ordinary",
+ *         "saddle motion fine olympic strong dragon sound frown moment topic degree dress",
+ *         "satisfy acid gown ivory surprise soft street primary develop snack arrange knee"
+ *     ],
+ *     "xpubs": [
+ *         "xpub6EmCUQU3sLYjSCjdY5cf3JSvyHFNDP34ZTWpZpLGs4MHxEiryCjZDRWL34x4eKfk2gdLraz5sbb9mnd6TjfxWWm7z6xq8VTsj7uLEJMYjLr",
+ *         "xpub6DiuUYBQYrBmST5P2juVEVHzhbeE8PjfxpVurhPWmEdL63YZrMyG61QzFS9TCicTWw9wBC7fhUmd6EZoU4ANQYeiAysTqRaCMMsu5x2J9zc",
+ *         "xpub6Evw9DnJQcs9vpp5a23QYUsxhzaAg3hQ4AMjZ5zmVx1qyXE3qRuDJH15cBoMJ94oQHzTKSg5EchHGGzN4URKscRmmnAg6MqL5oN8xVQ67T1",
+ *         "xpub6DuPt44n228ok4rbVzK6vtjknUCibYo6pMHtRjUJXYrBKQh75BDyaBNd6o3jSuMiC8kecC3X8rgdf9EtLjpy6ydaYFUYgzsQLQhmgppp2EX",
+ *         "xpub6FDKCJMxbkB5r9cCeEXxszqiCTJwCkU6kwsMxtHMF2WA7BmzTRAu1Ews7CpLckQQjutPcSU3Wm8LMMdAR2CF9CfLgH7PwRJRTMJLEgyfT4t",
+ *         "xpub6EdVeVq7X1SrkXKGdTDRp35cCJxELiVLs9rPEvCbfoMPhgrvyBQALDcV8TcL5dsw9yMrh3i47YkuwtiiP9MhQzSr8xatdqS58yeKD7eJ2HX",
+ *         "xpub6F9mCkQBkD1MGnx4KcHLZRvKfY8TT9xhbvk718kzSN1qpP4RHV54rgAJFq8gaRrDvhvD9uweoeTL4t443YNKZZywGp27tMKZThrhbqBdT18",
+ *         "xpub6Ek7qzXAACHzAHTwUey3gcAVGWevjfuYYNb6JVbruvgtL3ngEqkYdU5arCSTX4FpSdehciW4iA6ag8e11nVW8ru39sG31ioqB9Xz9qrYL1a",
+ *         "xpub6ETrnSYijccrRLqahqSrrhEWBxZyRFp4yJeocxeRQZK9FqSgso5jvezaGqwAiB8BYfNqJsYENpdd84k9F2JUiCnNCKa4YCtBZ4h89Ly5Cq8",
+ *         "xpub6FQaaVC9owqddd4mBmy49hCA9BMZwU1ufeEyVZWrVVDXGcc7CUHJPcAJAkyCEjEG5Q4yWHG9sURPHHKSFRyggPA94sdyW68uLZuNcSzWrQS"
+ *     ]
+ * }
+ */
