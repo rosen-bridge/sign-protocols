@@ -11,7 +11,7 @@ import {
   SignPayload,
   TxQueued
 } from './types';
-import { multiSigFirstSignDelay } from './const';
+import { multiSigFirstSignDelay, turnTime } from './const';
 import * as crypto from 'crypto';
 import { Semaphore } from 'await-semaphore';
 import Encryption from './utils/Encryption';
@@ -36,7 +36,6 @@ export class MultiSigHandler {
   private prover?: wasm.Wallet;
   private index?: number;
   private semaphore = new Semaphore(1);
-  private turnTime = 3 * 60 * 1000; // 3 minutes
 
   constructor(config: ErgoMultiSigConfig) {
     this.logger = config.logger ? config.logger : new DummyLogger();
@@ -59,7 +58,7 @@ export class MultiSigHandler {
    */
   public getCurrentTurnInd = (): number => {
     // every turnTime the turn changes to the next guard
-    return Math.floor(new Date().getTime() / this.turnTime) % this.peers.length;
+    return Math.floor(new Date().getTime() / turnTime) % this.peers.length;
   };
 
   /**
