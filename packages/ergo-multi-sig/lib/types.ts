@@ -54,6 +54,7 @@ interface TxQueued {
   reject?: (reason?: any) => void;
   createTime: number;
   requiredSigner: number;
+  coordinator: number;
 }
 
 interface GeneralPayload {
@@ -109,8 +110,12 @@ interface SignPayload extends GeneralPayload {
   txId: string;
 }
 
-interface signedTxPayload extends GeneralPayload {
+interface SignedTxPayload extends GeneralPayload {
   txBytes: string;
+}
+
+interface GenerateCommitmentPayload extends GeneralPayload {
+  txId: string;
 }
 
 type Payload =
@@ -119,11 +124,12 @@ type Payload =
   | CommitmentPayload
   | InitiateSignPayload
   | SignPayload
-  | signedTxPayload;
+  | SignedTxPayload
+  | GenerateCommitmentPayload;
 
 
 interface CommunicationMessage {
-  type: 'register' | 'approve' | 'commitment' | 'sign' | 'initiateSign' | 'signedTx';
+  type: 'register' | 'approve' | 'commitment' | 'sign' | 'initiateSign' | 'signedTx' | "generateCommitment";
   sign?: string;
   payload: Payload;
 }
@@ -154,5 +160,6 @@ export {
   InitiateSignPayload,
   SingleProof,
   PublishedProof,
-  signedTxPayload
+  SignedTxPayload,
+  GenerateCommitmentPayload
 };

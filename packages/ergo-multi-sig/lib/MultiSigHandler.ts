@@ -3,13 +3,13 @@ import {
   ApprovePayload,
   CommitmentPayload,
   CommunicationMessage,
-  ErgoMultiSigConfig,
+  ErgoMultiSigConfig, GenerateCommitmentPayload,
   InitiateSignPayload,
   RegisterPayload,
-  signedTxPayload,
+  SignedTxPayload,
   Signer,
   SignPayload,
-  TxQueued,
+  TxQueued
 } from './types';
 import { multiSigFirstSignDelay, turnTime } from './const';
 import * as crypto from 'crypto';
@@ -137,6 +137,8 @@ export class MultiSigHandler {
     }
   };
 
+
+
   /**
    * handle verified approve message from other guards
    * @param sender
@@ -204,6 +206,7 @@ export class MultiSigHandler {
           commitmentSigns: {},
           createTime: new Date().getTime(),
           requiredSigner: 0,
+          coordinator: -1,
         };
         this.transactions.set(txId, newTransaction);
         return { transaction: newTransaction, release };
@@ -217,20 +220,22 @@ export class MultiSigHandler {
   /**
    * add a transaction to the queue without initiating sign
    * @param tx reduced transaction for multi-sig transaction
+   * @param requiredSign
    * @param boxes input boxes for transaction
    * @param dataBoxes data input boxes for transaction
    */
-  public addTx = (
+  public addTx = async (
     tx: wasm.ReducedTransaction,
+    requiredSign: number,
     boxes: Array<wasm.ErgoBox>,
     dataBoxes: Array<wasm.ErgoBox>,
   ) => {
-    this.getQueuedTransaction(tx.unsigned_tx().id().to_str())
+    return this.getQueuedTransaction(tx.unsigned_tx().id().to_str())
       .then(({ transaction, release }) => {
         transaction.tx = tx;
         transaction.boxes = boxes;
+        transaction.requiredSigner = requiredSign;
         transaction.dataBoxes = dataBoxes;
-        this.generateCommitment(tx.unsigned_tx().id().to_str());
         release();
       })
       .catch((e) => {
@@ -332,7 +337,9 @@ export class MultiSigHandler {
     const currentTurn = this.getCurrentTurnInd();
 
     const transaction = this.transactions.get(id);
-    if (transaction && !transaction.secret && transaction.tx) {
+    if (transaction && transaction.tx) {
+      transaction.coordinator = currentTurn;
+
       transaction.secret =
         this.getProver().generate_commitments_for_reduced_transaction(
           transaction.tx,
@@ -680,11 +687,13 @@ export class MultiSigHandler {
           `Signed transaction ${tx.id().to_str()} is invalid`,
         );
 
+      release()
       this.transactions.delete(tx.id().to_str());
     } catch (e) {
       this.logger.warn(
         `An unknown exception occurred while handling signed transaction: ${e}`,
       );
+      release()
     }
   };
 
@@ -731,6 +740,10 @@ export class MultiSigHandler {
           case 'approve':
             this.handleApprove(sender, message.payload as ApprovePayload);
             break;
+          case 'generateCommitment':
+            const payload = message.payload as GenerateCommitmentPayload;
+            this.generateCommitment(payload.txId)
+            break;
           case 'commitment':
             this.handleCommitment(
               sender,
@@ -747,7 +760,7 @@ export class MultiSigHandler {
             break;
 
           case 'signedTx': {
-            const payload = message.payload as signedTxPayload;
+            const payload = message.payload as SignedTxPayload;
             this.handleSignedTx(payload.txBytes);
             break;
           }
@@ -772,6 +785,35 @@ export class MultiSigHandler {
     this.sendRegister();
   };
 
+  handleMyTurnForTx = (txId: string) => {
+    const transaction = this.transactions.get(txId);
+    if (!transaction) return;
+    transaction.simulatedBag = wasm.TransactionHintsBag.empty();
+    transaction.commitments = {};
+    transaction.commitmentSigns = {};
+    transaction.signs = {};
+    const myInd = this.getIndex();
+
+    if (this.isMyTurn() && transaction.coordinator !== myInd) {
+      transaction.coordinator = myInd;
+      this.generateCommitment(txId);
+    //   ask peers to generate commitment
+      this.sendMessage({
+        type: 'generateCommitment',
+        payload: {
+          txId: txId,
+        },
+      });
+    }
+  };
+
+  handleMyTurn = () => {
+    if (!this.isMyTurn()) return;
+    for (const [txId, transaction] of Array.from(this.transactions)) {
+      this.handleMyTurnForTx(txId);
+    }
+  }
+
   /**
    * cleaning unsigned transaction after txSignTimeout if the transaction still exist in queue
    */
@@ -780,7 +822,7 @@ export class MultiSigHandler {
     let cleanedTransactionCount = 0;
     this.semaphore.acquire().then((release) => {
       try {
-        for (const [key, transaction] of this.transactions.entries()) {
+        for (const [key, transaction] of Array.from(this.transactions)) {
           if (
             transaction.createTime <
             new Date().getTime() - this.txSignTimeout * 1000
