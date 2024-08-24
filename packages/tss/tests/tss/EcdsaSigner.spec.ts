@@ -1,4 +1,4 @@
-import { EcdsaSigner, ECDSA, GuardDetection } from '../../lib';
+import { ECDSA, EcdsaSigner, GuardDetection } from '../../lib';
 import { describe, expect, it, vi } from 'vitest';
 
 describe('EcdsaSigner', () => {

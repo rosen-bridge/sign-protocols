@@ -2,16 +2,16 @@ import { Communicator } from '../abstract';
 import { DummyLogger } from '@rosen-bridge/abstract-logger';
 import {
   DetectionApprovePayload,
-  GuardDetectionConfig,
-  GuardInfo,
   DetectionHeartbeatPayload,
   DetectionMessageType,
-  Nonce,
   DetectionRegisterPayload,
+  GuardDetectionConfig,
+  GuardInfo,
+  Nonce,
 } from '../types/detection';
 import {
-  guardHeartbeatTimeoutDefault,
   guardActiveTimeoutDefault,
+  guardHeartbeatTimeoutDefault,
 } from '../const/const';
 import {
   approveMessage,

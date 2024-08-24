@@ -20,7 +20,7 @@ var logging *zap.SugaredLogger
 
 var ecdsaHandler handler
 
-//	- Initializes the ecdsa keygen partyId metaData and peers
+// - Initializes the ecdsa keygen partyId metaData and peers
 func (s *operationECDSAKeygen) Init(rosenTss _interface.RosenTss, peers []string) error {
 
 	s.Logger.Info("initiation keygen process")
@@ -57,9 +57,9 @@ func (s *operationECDSAKeygen) Init(rosenTss _interface.RosenTss, peers []string
 	return nil
 }
 
-//	- creates end and out channel for party,
-//	- calls StartParty function of protocol
-//	- handles end channel and out channel in a go routine
+// - creates end and out channel for party,
+// - calls StartParty function of protocol
+// - handles end channel and out channel in a go routine
 func (s *operationECDSAKeygen) CreateParty(rosenTss _interface.RosenTss, statusCh chan bool, errorCh chan error) {
 	s.Logger.Info("creating and starting party")
 
@@ -101,7 +101,7 @@ func (s *operationECDSAKeygen) CreateParty(rosenTss _interface.RosenTss, statusC
 	}()
 }
 
-//	- reads new gossip messages from channel and handle it by calling related function in a go routine.
+// - reads new gossip messages from channel and handle it by calling related function in a go routine.
 func (s *operationECDSAKeygen) StartAction(rosenTss _interface.RosenTss, messageCh chan models.GossipMessage, errorCh chan error) error {
 
 	partyStarted := false
@@ -163,7 +163,7 @@ func (s *operationECDSAKeygen) StartAction(rosenTss _interface.RosenTss, message
 	}
 }
 
-//	- create ecdsa keygen operation
+// - create ecdsa keygen operation
 func NewKeygenECDSAOperation(keygenMessage models.KeygenMessage) _interface.KeygenOperation {
 	logging = logger.NewSugar("ecdsa-keygen")
 	return &operationECDSAKeygen{
@@ -175,14 +175,14 @@ func NewKeygenECDSAOperation(keygenMessage models.KeygenMessage) _interface.Keyg
 	}
 }
 
-//	- returns the class name
+// - returns the class name
 func (s *operationECDSAKeygen) GetClassName() string {
 	return "ecdsaKeygen"
 }
 
-//	- handles party messages on out channel
-//	- creates payload from party message
-//	- send it to NewMessage function
+// - handles party messages on out channel
+// - creates payload from party message
+// - send it to NewMessage function
 func (s *operationECDSAKeygen) HandleOutMessage(rosenTss _interface.RosenTss, partyMsg tss.Message) error {
 	msgHex, err := s.KeygenOperationHandler.PartyMessageHandler(partyMsg)
 	if err != nil {
@@ -213,8 +213,8 @@ func (s *operationECDSAKeygen) HandleOutMessage(rosenTss _interface.RosenTss, pa
 	return nil
 }
 
-//	- handles save data (keygen data) on end channel of party
-//	- logs the data and send it to CallBack
+// - handles save data (keygen data) on end channel of party
+// - logs the data and send it to CallBack
 func (s *operationECDSAKeygen) HandleEndMessage(rosenTss _interface.RosenTss, keygenData *ecdsaKeygen.LocalPartySaveData) error {
 
 	pkX, pkY := keygenData.ECDSAPub.X(), keygenData.ECDSAPub.Y()
@@ -253,8 +253,8 @@ func (s *operationECDSAKeygen) HandleEndMessage(rosenTss _interface.RosenTss, ke
 	return nil
 }
 
-//	- handles all party messages on outCh and endCh
-//	- listens to channels and send the message to the right function
+// - handles all party messages on outCh and endCh
+// - listens to channels and send the message to the right function
 func (s *operationECDSAKeygen) GossipMessageHandler(
 	rosenTss _interface.RosenTss, outCh chan tss.Message, endCh chan *ecdsaKeygen.LocalPartySaveData,
 ) (bool, error) {
@@ -275,7 +275,7 @@ func (s *operationECDSAKeygen) GossipMessageHandler(
 	}
 }
 
-//	- creates tss parameters and party
+// - creates tss parameters and party
 func (h *handler) StartParty(
 	localTssData *models.TssData,
 	threshold int,

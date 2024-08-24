@@ -1,8 +1,8 @@
 import { randomBytes } from 'crypto';
 import { MultiSigHandler, MultiSigUtils } from '../../lib';
-import { mockedErgoStateContext } from '../testData';
-import { pubs, secrets } from '../../../data';
+import { mockedErgoStateContext, testPubs, testSecrets } from '../testData';
 import TestConfigs from './TestConfigs';
+import Encryption from '../../lib/utils/Encryption';
 
 class TestUtils {
   /**
@@ -16,11 +16,10 @@ class TestUtils {
     pks?: string[],
   ): Promise<MultiSigHandler> => {
     const multiSigUtilsInstance = new MultiSigUtils(async () => {
-
       return mockedErgoStateContext;
     });
-    const pubKeys = pks ? pks : pubs;
-    const secretInd = secrets.indexOf(secret);
+    const pubKeys = pks ? pks : testPubs;
+    const secretInd = testSecrets.indexOf(secret);
     const handler = new MultiSigHandler({
       multiSigUtilsInstance: multiSigUtilsInstance,
       publicKeys: pubKeys,
@@ -28,11 +27,26 @@ class TestUtils {
       txSignTimeout: TestConfigs.txSignTimeout,
       multiSigFirstSignDelay: TestConfigs.multiSigFirstSignDelay,
       submit: submit,
-      getPeerId: () => Promise.resolve(pubs[secretInd]),
+      getPeerId: () => Promise.resolve(testPubs[secretInd]),
     });
     return handler;
   };
 
+  static messageToPayload = (
+    message: any,
+    ind: number,
+    secret: string,
+  ): any => {
+    const payload = message.payload;
+    payload.index = ind;
+    payload.id = ind.toString();
+    const sec = Buffer.from(secret, 'hex');
+    const payloadStr = JSON.stringify(message.payload);
+    message.sign = Buffer.from(
+      Encryption.sign(payloadStr, Buffer.from(sec)),
+    ).toString('base64');
+    return message;
+  };
 }
 
 export default TestUtils;

@@ -32,9 +32,9 @@ type StructSign struct {
 	Handler
 }
 
-//	- finds the index of peer in the key list.
-//	- creates a gossip message from payload.
-//	- sends the gossip message to Publish function.
+// - finds the index of peer in the key list.
+// - creates a gossip message from payload.
+// - sends the gossip message to Publish function.
 func (s *StructSign) NewMessage(rosenTss _interface.RosenTss, payload models.Payload, receiver string) error {
 	s.Logger.Infof("creating new gossip message")
 	keyList, sharedId := s.GetData()
@@ -57,9 +57,9 @@ func (s *StructSign) NewMessage(rosenTss _interface.RosenTss, payload models.Pay
 	return nil
 }
 
-//	- handles party messages on out channel
-//	- creates payload from party message
-//	- send it to NewMessage function
+// - handles party messages on out channel
+// - creates payload from party message
+// - send it to NewMessage function
 func (s *StructSign) HandleOutMessage(rosenTss _interface.RosenTss, partyMsg tss.Message) error {
 	msgHex, err := s.SignOperationHandler.PartyMessageHandler(partyMsg)
 	if err != nil {
@@ -92,8 +92,8 @@ func (s *StructSign) HandleOutMessage(rosenTss _interface.RosenTss, partyMsg tss
 	return nil
 }
 
-//	- handles save data (signature) on end channel of party
-//	- logs the data and send it to CallBack
+// - handles save data (signature) on end channel of party
+// - logs the data and send it to CallBack
 func (s *StructSign) HandleEndMessage(rosenTss _interface.RosenTss, signatureData *common.SignatureData) error {
 
 	signData := models.SignData{
@@ -114,8 +114,8 @@ func (s *StructSign) HandleEndMessage(rosenTss _interface.RosenTss, signatureDat
 	return nil
 }
 
-//	- handles all party messages on outCh and endCh
-//	- listens to channels and send the message to the right function
+// - handles all party messages on outCh and endCh
+// - listens to channels and send the message to the right function
 func (s *StructSign) GossipMessageHandler(
 	rosenTss _interface.RosenTss, outCh chan tss.Message, endCh chan *common.SignatureData,
 ) (bool, error) {
@@ -136,7 +136,7 @@ func (s *StructSign) GossipMessageHandler(
 	}
 }
 
-//	- Updates party on received message destination.
+// - Updates party on received message destination.
 func (s *StructSign) PartyUpdate(partyMsg models.PartyMessage) error {
 	dest := partyMsg.GetTo
 	if dest == nil { // broadcast!

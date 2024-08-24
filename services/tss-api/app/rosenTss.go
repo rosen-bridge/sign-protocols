@@ -36,7 +36,7 @@ type rosenTss struct {
 
 var logging *zap.SugaredLogger
 
-//	Constructor of an app
+// Constructor of an app
 func NewRosenTss(connection network.Connection, storage storage.Storage, config models.Config, trustKey string) _interface.RosenTss {
 	logging = logger.NewSugar("app")
 	return &rosenTss{
@@ -134,7 +134,7 @@ func (r *rosenTss) StartNewKeygen(keygenMessage models.KeygenMessage) error {
 	return nil
 }
 
-//	starts sign scenario for app based on given protocol.
+// starts sign scenario for app based on given protocol.
 func (r *rosenTss) StartNewSign(signMessage models.SignMessage) error {
 	logging.Info("Starting New Sign process")
 	msgBytes, _ := utils.HexDecoder(signMessage.Message)
@@ -196,7 +196,7 @@ func (r *rosenTss) StartNewSign(signMessage models.SignMessage) error {
 	return nil
 }
 
-//	handles the receiving message from message route
+// handles the receiving message from message route
 func (r *rosenTss) MessageHandler(message models.Message) error {
 
 	msgBytes := []byte(message.Message)
@@ -236,17 +236,17 @@ func (r *rosenTss) MessageHandler(message models.Message) error {
 	return nil
 }
 
-//	returns the storage
+// returns the storage
 func (r *rosenTss) GetStorage() storage.Storage {
 	return r.storage
 }
 
-//	returns the connection
+// returns the connection
 func (r *rosenTss) GetConnection() network.Connection {
 	return r.connection
 }
 
-//	setups peer home address and creates that
+// setups peer home address and creates that
 func (r *rosenTss) SetPeerHome(homeAddress string) error {
 	logging.Info("setting up home directory")
 
@@ -258,12 +258,12 @@ func (r *rosenTss) SetPeerHome(homeAddress string) error {
 	return nil
 }
 
-//	returns the peer's home
+// returns the peer's home
 func (r *rosenTss) GetPeerHome() string {
 	return r.peerHome
 }
 
-//	setting ups metadata from given file in the home directory
+// setting ups metadata from given file in the home directory
 func (r *rosenTss) SetMetaData(meta models.MetaData, crypto string) error {
 	switch crypto {
 	case models.EDDSA:
@@ -277,7 +277,7 @@ func (r *rosenTss) SetMetaData(meta models.MetaData, crypto string) error {
 	}
 }
 
-//	returns peer's meta data
+// returns peer's meta data
 func (r *rosenTss) GetMetaData(crypto string) (models.MetaData, error) {
 	switch crypto {
 	case models.EDDSA:
@@ -297,17 +297,17 @@ func (r *rosenTss) GetMetaData(crypto string) (models.MetaData, error) {
 	}
 }
 
-//	returns list of operations
+// returns list of operations
 func (r *rosenTss) GetKeygenOperations() map[string]_interface.KeygenOperation {
 	return r.KeygenOperationMap
 }
 
-//	returns list of operations
+// returns list of operations
 func (r *rosenTss) GetSignOperations() map[string]_interface.SignOperation {
 	return r.SignOperationMap
 }
 
-//	removes operation and related channel from list
+// removes operation and related channel from list
 func (r *rosenTss) deleteInstance(operationType string, messageId string, channelId string, errorCh chan error) {
 	switch operationType {
 	case "keygen":
@@ -317,7 +317,7 @@ func (r *rosenTss) deleteInstance(operationType string, messageId string, channe
 	}
 }
 
-//	removes operation and related channel for Keygen operation
+// removes operation and related channel for Keygen operation
 func (r *rosenTss) deleteKeygenInstance(messageId string, channelId string, errorCh chan error) {
 	operationName := r.KeygenOperationMap[channelId].GetClassName()
 	logging.Debugf("deleting %s for channelId %s and messageId %s for keygen operation", operationName, channelId, messageId)
@@ -327,7 +327,7 @@ func (r *rosenTss) deleteKeygenInstance(messageId string, channelId string, erro
 	logging.Infof("operation %s removed for channelId %s and messageId %s for keygen operation", operationName, channelId, messageId)
 }
 
-//	removes operation and related channel for sign Operation
+// removes operation and related channel for sign Operation
 func (r *rosenTss) deleteSignInstance(messageId string, channelId string, errorCh chan error) {
 	operationName := r.SignOperationMap[channelId].GetClassName()
 	logging.Debugf("deleting %s for channelId %s and messageId %s for sign operation", operationName, channelId, messageId)
@@ -337,7 +337,7 @@ func (r *rosenTss) deleteSignInstance(messageId string, channelId string, errorC
 	logging.Infof("operation %s removed for channelId %s and messageId %s for sign operation", operationName, channelId, messageId)
 }
 
-//	set p2p to the variable
+// set p2p to the variable
 func (r *rosenTss) SetP2pId() error {
 	p2pId, err := r.GetConnection().GetPeerId()
 	if err != nil {
@@ -347,17 +347,17 @@ func (r *rosenTss) SetP2pId() error {
 	return nil
 }
 
-//	get p2pId
+// get p2pId
 func (r *rosenTss) GetP2pId() string {
 	return r.P2pId
 }
 
-//	get Config
+// get Config
 func (r *rosenTss) GetConfig() models.Config {
 	return r.Config
 }
 
-//	get TrustKey
+// get TrustKey
 func (r *rosenTss) GetTrustKey() string {
 	return r.trustKey
 }

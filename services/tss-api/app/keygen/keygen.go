@@ -18,8 +18,8 @@ type StructKeygen struct {
 	Logger        *zap.SugaredLogger
 }
 
-//	- creates a gossip message from payload.
-//	- sends the gossip message to Publish function.
+// - creates a gossip message from payload.
+// - sends the gossip message to Publish function.
 func (s *StructKeygen) NewMessage(rosenTss _interface.RosenTss, payload models.Payload, receiver string) error {
 	s.Logger.Infof("creating new gossip message")
 
@@ -36,7 +36,7 @@ func (s *StructKeygen) NewMessage(rosenTss _interface.RosenTss, payload models.P
 	return nil
 }
 
-//	- Updates party on received message destination.
+// - Updates party on received message destination.
 func (s *StructKeygen) PartyUpdate(partyMsg models.PartyMessage) error {
 	dest := partyMsg.GetTo
 	if dest == nil { // broadcast!

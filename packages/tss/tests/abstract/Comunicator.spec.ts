@@ -1,6 +1,6 @@
 import { EdDSA } from '../../lib';
 import { TestCommunicator } from './TestCommunicator';
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 describe('Communicator', () => {
   let communicator: TestCommunicator;

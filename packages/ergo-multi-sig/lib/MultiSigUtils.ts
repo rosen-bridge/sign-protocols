@@ -1,6 +1,16 @@
 import * as wasm from 'ergo-lib-wasm-nodejs';
-import { CommitmentJson, PublishedCommitment, PublishedProof, SingleCommitment } from './types';
-import { ErgoBox, ErgoBoxes, ReducedTransaction, TransactionHintsBag } from 'ergo-lib-wasm-nodejs';
+import {
+  ErgoBox,
+  ErgoBoxes,
+  ReducedTransaction,
+  TransactionHintsBag,
+} from 'ergo-lib-wasm-nodejs';
+import {
+  CommitmentJson,
+  PublishedCommitment,
+  PublishedProof,
+  SingleCommitment,
+} from './types';
 import Encryption from './utils/Encryption';
 
 export class MultiSigUtils {
@@ -17,12 +27,12 @@ export class MultiSigUtils {
    * @param pubKeys
    */
   static publicKeyToProposition = (
-    pubKeys: Array<string>
+    pubKeys: Array<string>,
   ): wasm.Propositions => {
     const res = new wasm.Propositions();
     pubKeys.forEach((item) => {
       res.add_proposition_from_byte(
-        Uint8Array.from(Buffer.from('cd' + item, 'hex'))
+        Uint8Array.from(Buffer.from('cd' + item, 'hex')),
       );
     });
     return res;
@@ -41,7 +51,7 @@ export class MultiSigUtils {
     boxes: Array<wasm.ErgoBox>,
     dataBoxes: Array<wasm.ErgoBox>,
     signed: Array<string>,
-    simulated: Array<string>
+    simulated: Array<string>,
   ): Promise<TransactionHintsBag> => {
     const simulatedPropositions =
       MultiSigUtils.publicKeyToProposition(simulated);
@@ -58,7 +68,7 @@ export class MultiSigUtils {
       inputBoxes,
       dataInputBoxes,
       realPropositions,
-      simulatedPropositions
+      simulatedPropositions,
     );
   };
 
@@ -71,12 +81,12 @@ export class MultiSigUtils {
   static add_hints = (
     currentHints: wasm.TransactionHintsBag,
     newHints: wasm.TransactionHintsBag,
-    tx: wasm.ReducedTransaction
+    tx: wasm.ReducedTransaction,
   ): void => {
     for (let index = 0; index < tx.unsigned_tx().inputs().len(); index++) {
       currentHints.add_hints_for_input(
         index,
-        newHints.all_hints_for_input(index)
+        newHints.all_hints_for_input(index),
       );
     }
   };
@@ -87,10 +97,14 @@ export class MultiSigUtils {
    * @param pubKey public key
    * @param type commitment type: simulated or real
    */
-  static convertToHintBag = (commitments: PublishedCommitment, pubKey: string, type = 'cmtReal'): TransactionHintsBag => {
+  static convertToHintBag = (
+    commitments: PublishedCommitment,
+    pubKey: string,
+    type = 'cmtReal',
+  ): TransactionHintsBag => {
     const resultJson: CommitmentJson = {
       secretHints: {},
-      publicHints: {}
+      publicHints: {},
     };
     Object.keys(commitments).forEach((key) => {
       const inputCommitments = commitments[key];
@@ -106,8 +120,8 @@ export class MultiSigUtils {
           type: 'dlog',
           pubkey: {
             op: '205',
-            h: pubKey
-          }
+            h: pubKey,
+          },
         });
       });
     });
@@ -120,10 +134,14 @@ export class MultiSigUtils {
    * @param pubKey public keys with correct order
    * @param type proof type: simulated or real
    */
-  static publishedProofToHintBag = (publishedProof: PublishedProof, pubKey: string, type = 'proofReal'): wasm.TransactionHintsBag => {
+  static publishedProofToHintBag = (
+    publishedProof: PublishedProof,
+    pubKey: string,
+    type = 'proofReal',
+  ): wasm.TransactionHintsBag => {
     const resultJson: CommitmentJson = {
       secretHints: {},
-      publicHints: {}
+      publicHints: {},
     };
     Object.keys(publishedProof).forEach((key) => {
       const proofs = publishedProof[key];
@@ -134,14 +152,13 @@ export class MultiSigUtils {
           hint: type,
           pubkey: {
             op: '205',
-            h: pubKey
+            h: pubKey,
           },
           challenge: proof.proof.slice(0, MultiSigUtils.CHALLENGE_LEN),
           proof: proof.proof,
-          position: proof.position
+          position: proof.position,
         });
       });
-
     });
     return wasm.TransactionHintsBag.from_json(JSON.stringify(resultJson));
   };
@@ -153,10 +170,19 @@ export class MultiSigUtils {
    * @param tx transaction
    * @param type proof type: simulated or real
    */
-  static publishedProofsToHintBag(publishedProofs: PublishedProof[], pubKeys: string[], tx: ReducedTransaction, type = 'proofReal'): wasm.TransactionHintsBag {
+  static publishedProofsToHintBag(
+    publishedProofs: PublishedProof[],
+    pubKeys: string[],
+    tx: ReducedTransaction,
+    type = 'proofReal',
+  ): wasm.TransactionHintsBag {
     const hints = wasm.TransactionHintsBag.empty();
     publishedProofs.forEach((publishedProof, index) => {
-      const hintBag = MultiSigUtils.publishedProofToHintBag(publishedProof, pubKeys[index], type);
+      const hintBag = MultiSigUtils.publishedProofToHintBag(
+        publishedProof,
+        pubKeys[index],
+        type,
+      );
       MultiSigUtils.add_hints(hints, hintBag, tx);
     });
     return hints;
@@ -169,10 +195,19 @@ export class MultiSigUtils {
    * @param tx transaction
    * @param type commitment type: simulated or real
    */
-  static publishedCommitmentsToHintBag(publishedCommitments: PublishedCommitment[], pubKeys: string[], tx: ReducedTransaction, type = 'cmtReal'): wasm.TransactionHintsBag {
+  static publishedCommitmentsToHintBag(
+    publishedCommitments: PublishedCommitment[],
+    pubKeys: string[],
+    tx: ReducedTransaction,
+    type = 'cmtReal',
+  ): wasm.TransactionHintsBag {
     const hints = wasm.TransactionHintsBag.empty();
     publishedCommitments.forEach((publishedCommitment, index) => {
-      const hintBag = MultiSigUtils.convertToHintBag(publishedCommitment, pubKeys[index], type);
+      const hintBag = MultiSigUtils.convertToHintBag(
+        publishedCommitment,
+        pubKeys[index],
+        type,
+      );
       MultiSigUtils.add_hints(hints, hintBag, tx);
     });
     return hints;
@@ -185,7 +220,11 @@ export class MultiSigUtils {
    * @param guardPkHex selected guard pk
    * @param inputCount number of inputs
    */
-  static convertHintBagToPublishedCommitmentForGuard = (extracted: wasm.TransactionHintsBag, guardPkHex: string, inputCount: number) => {
+  static convertHintBagToPublishedCommitmentForGuard = (
+    extracted: wasm.TransactionHintsBag,
+    guardPkHex: string,
+    inputCount: number,
+  ) => {
     const res: PublishedCommitment = {};
     const commitmentJson = extracted.to_json() as CommitmentJson;
     for (let index = 0; index < inputCount; index++) {
@@ -209,7 +248,7 @@ export class MultiSigUtils {
   static comparePublishedCommitmentsToBeDiffer = (
     item1: PublishedCommitment,
     item2: PublishedCommitment,
-    inputLength: number
+    inputLength: number,
   ) => {
     for (let inputIndex = 0; inputIndex < inputLength; inputIndex++) {
       const item1InputCommitments = item1[`${inputIndex}`];
@@ -226,7 +265,7 @@ export class MultiSigUtils {
         if (
           !MultiSigUtils.compareSingleInputCommitmentsAreEquals(
             item1InputCommitments,
-            item2InputCommitments
+            item2InputCommitments,
           )
         ) {
           return true;
@@ -243,13 +282,13 @@ export class MultiSigUtils {
    */
   static compareSingleInputCommitmentsAreEquals = (
     item1: Array<SingleCommitment>,
-    item2: Array<SingleCommitment>
+    item2: Array<SingleCommitment>,
   ) => {
     const item1Sorted = item1.sort((a, b) =>
-      a.position.localeCompare(b.position)
+      a.position.localeCompare(b.position),
     );
     const item2Sorted = item2.sort((a, b) =>
-      a.position.localeCompare(b.position)
+      a.position.localeCompare(b.position),
     );
     let res = true;
     item1Sorted.map((item, index) => {
@@ -265,9 +304,12 @@ export class MultiSigUtils {
    * @param hintBag hint bag
    * @param pub public key
    */
-  static toReducedPublishedCommitments = (hintBag: wasm.TransactionHintsBag, pub: string): PublishedCommitment => {
+  static toReducedPublishedCommitments = (
+    hintBag: wasm.TransactionHintsBag,
+    pub: string,
+  ): PublishedCommitment => {
     const hintJs = hintBag.to_json() as CommitmentJson;
-    const publicHints = hintJs.publicHints
+    const publicHints = hintJs.publicHints;
     const publishCommitments: PublishedCommitment = {};
     Object.keys(publicHints).forEach((inputIndex) => {
       const inputHints = publicHints[inputIndex]
@@ -276,7 +318,7 @@ export class MultiSigUtils {
       if (inputHints) {
         publishCommitments[inputIndex] = inputHints.map((item) => ({
           a: item.a,
-          position: item.position
+          position: item.position,
         }));
       }
     });
@@ -288,8 +330,13 @@ export class MultiSigUtils {
    * @param hintBag hint bag
    * @param pubs public key
    */
-  static toReducedPublishedCommitmentsArray = (hintBag: wasm.TransactionHintsBag, pubs: Array<string>): PublishedCommitment[] => {
-    return pubs.map((pub) => MultiSigUtils.toReducedPublishedCommitments(hintBag, pub));
+  static toReducedPublishedCommitmentsArray = (
+    hintBag: wasm.TransactionHintsBag,
+    pubs: Array<string>,
+  ): PublishedCommitment[] => {
+    return pubs.map((pub) =>
+      MultiSigUtils.toReducedPublishedCommitments(hintBag, pub),
+    );
   };
 
   /**
@@ -297,15 +344,20 @@ export class MultiSigUtils {
    * @param hintBag hint bag
    * @param pub public key
    */
-  static hintBagToPublishedProof = (hintBag: wasm.TransactionHintsBag, pub: string): PublishedProof => {
+  static hintBagToPublishedProof = (
+    hintBag: wasm.TransactionHintsBag,
+    pub: string,
+  ): PublishedProof => {
     const hintsJs = hintBag.to_json();
     const publishedProof: PublishedProof = {};
     const privateHints = hintsJs.secretHints;
     Object.keys(privateHints).forEach((key) => {
-      const hints = privateHints[key].filter((hint: any) => hint.pubkey.h === pub);
+      const hints = privateHints[key].filter(
+        (hint: any) => hint.pubkey.h === pub,
+      );
       publishedProof[key] = hints.map((hint: any) => ({
         proof: hint.proof,
-        position: hint.position
+        position: hint.position,
       }));
     });
     return publishedProof;
@@ -316,10 +368,14 @@ export class MultiSigUtils {
    * @param hintBag hint bag
    * @param pubs public keys
    */
-  static toReducedPublishedProofsArray = (hintBag: wasm.TransactionHintsBag, pubs: Array<string>): PublishedProof[] => {
-    return pubs.map((pub) => MultiSigUtils.hintBagToPublishedProof(hintBag, pub));
+  static toReducedPublishedProofsArray = (
+    hintBag: wasm.TransactionHintsBag,
+    pubs: Array<string>,
+  ): PublishedProof[] => {
+    return pubs.map((pub) =>
+      MultiSigUtils.hintBagToPublishedProof(hintBag, pub),
+    );
   };
-
 
   /**
    * verify that the transaction is valid
@@ -333,7 +389,15 @@ export class MultiSigUtils {
       ergoBoxes.add(boxes[index]);
     }
     for (let ind = 0; ind < tx.inputs().len(); ind++) {
-      if (!wasm.verify_tx_input_proof(0, context, tx, ergoBoxes, wasm.ErgoBoxes.empty()))
+      if (
+        !wasm.verify_tx_input_proof(
+          0,
+          context,
+          tx,
+          ergoBoxes,
+          wasm.ErgoBoxes.empty(),
+        )
+      )
         return false;
     }
     return true;
@@ -345,7 +409,11 @@ export class MultiSigUtils {
    * @param pub guard's public key
    * @param data signed data
    */
-  static verifySignature = (signBase64: string, pub: string, data: string): boolean => {
+  static verifySignature = (
+    signBase64: string,
+    pub: string,
+    data: string,
+  ): boolean => {
     const publicKey = Buffer.from(pub, 'hex');
     const signature = Buffer.from(signBase64, 'base64');
     return Encryption.verify(data, signature, publicKey);
@@ -358,6 +426,4 @@ export class MultiSigUtils {
     const secretKeys = new wasm.SecretKeys();
     return wasm.Wallet.from_secrets(secretKeys);
   };
-
-
 }

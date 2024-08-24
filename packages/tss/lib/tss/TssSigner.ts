@@ -1,15 +1,15 @@
 import { Communicator } from '../abstract';
 import {
-  Threshold,
   PendingSign,
   Sign,
   SignApprovePayload,
   SignerConfig,
   SignMessageType,
   SignRequestPayload,
+  SignResult,
   SignStartPayload,
   StatusEnum,
-  SignResult,
+  Threshold,
 } from '../types/signer';
 import { GuardDetection } from '../detection/GuardDetection';
 import {

@@ -1,8 +1,8 @@
-import { GuardDetection } from '../../lib';
 import {
   DetectionApprovePayload,
   DetectionHeartbeatPayload,
   DetectionRegisterPayload,
+  GuardDetection,
 } from '../../lib';
 
 /**

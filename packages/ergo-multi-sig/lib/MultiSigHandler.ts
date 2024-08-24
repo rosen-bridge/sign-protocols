@@ -3,13 +3,14 @@ import {
   ApprovePayload,
   CommitmentPayload,
   CommunicationMessage,
-  ErgoMultiSigConfig, GenerateCommitmentPayload,
+  ErgoMultiSigConfig,
+  GenerateCommitmentPayload,
   InitiateSignPayload,
   RegisterPayload,
   SignedTxPayload,
   Signer,
   SignPayload,
-  TxQueued
+  TxQueued,
 } from './types';
 import { multiSigFirstSignDelay, turnTime } from './const';
 import * as crypto from 'crypto';
@@ -109,10 +110,13 @@ export class MultiSigHandler {
 
   /**
    * handle verified register message from other guards
-   * @param sender
-   * @param payload
+   * @param sender sender of the message
+   * @param payload register payload
    */
-  handleRegister = (sender: string, payload: RegisterPayload): void => {
+  handleRegister = async (
+    sender: string,
+    payload: RegisterPayload,
+  ): Promise<void> => {
     if (payload.index !== undefined && this.verifyIndex(payload.index)) {
       const peer = this.peers[payload.index];
       const nonce = crypto.randomBytes(32).toString('base64');
@@ -120,31 +124,31 @@ export class MultiSigHandler {
       this.logger.debug(
         `Peer [${sender}] claimed to be guard of index [${payload.index}]`,
       );
-      this.getPeerId().then((peerId) => {
-        this.sendMessage(
-          {
-            type: 'approve',
-            sign: '',
-            payload: {
-              nonce: payload.nonce,
-              nonceToSign: nonce,
-              myId: peerId,
-            },
+      const peerId = await this.getPeerId();
+      await this.sendMessage(
+        {
+          type: 'approve',
+          sign: '',
+          payload: {
+            nonce: payload.nonce,
+            nonceToSign: nonce,
+            myId: peerId,
           },
-          [sender],
-        );
-      });
+        },
+        [sender],
+      );
     }
   };
 
-
-
   /**
    * handle verified approve message from other guards
-   * @param sender
-   * @param payload
+   * @param sender sender of the message
+   * @param payload approve payload
    */
-  handleApprove = (sender: string, payload: ApprovePayload): void => {
+  handleApprove = async (
+    sender: string,
+    payload: ApprovePayload,
+  ): Promise<void> => {
     if (
       payload.index !== undefined &&
       this.verifyIndex(payload.index) &&
@@ -168,28 +172,27 @@ export class MultiSigHandler {
         peer.id = sender;
       }
       this.logger.debug(`Sending approval message to peer [${sender}] ...`);
-      this.getPeerId().then((peerId) => {
-        if (payload.nonceToSign) {
-          this.sendMessage(
-            {
-              type: 'approve',
-              sign: '',
-              payload: {
-                nonce: payload.nonceToSign,
-                myId: peerId,
-                nonceToSign: '',
-              },
+      const peerId = await this.getPeerId();
+      if (payload.nonceToSign) {
+        await this.sendMessage(
+          {
+            type: 'approve',
+            sign: '',
+            payload: {
+              nonce: payload.nonceToSign,
+              myId: peerId,
+              nonceToSign: '',
             },
-            [sender],
-          );
-        }
-      });
+          },
+          [sender],
+        );
+      }
     }
   };
 
   /**
    * get a transaction object from queued transactions.
-   * @param txId
+   * @param txId transaction id to get
    */
   getQueuedTransaction = (
     txId: string,
@@ -220,7 +223,7 @@ export class MultiSigHandler {
   /**
    * add a transaction to the queue without initiating sign
    * @param tx reduced transaction for multi-sig transaction
-   * @param requiredSign
+   * @param requiredSign number of required signatures
    * @param boxes input boxes for transaction
    * @param dataBoxes data input boxes for transaction
    */
@@ -297,7 +300,7 @@ export class MultiSigHandler {
       Encryption.sign(payloadStr, Buffer.from(this.secret)),
     ).toString('base64');
     if (receivers && receivers.length) {
-      Promise.all(
+      await Promise.all(
         receivers.map(async (receiver) =>
           this.submitMessage(JSON.stringify(message), [receiver]),
         ),
@@ -330,13 +333,13 @@ export class MultiSigHandler {
   };
 
   /**
-   * generating commitment for transaction in the queue by id
-   * @param id
+   * generating commitment for transaction in the queue by id and send it to the peer with the correct turn
+   * @param txId transaction id to generate commitment for
    */
-  generateCommitment = (id: string): void => {
+  generateCommitment = async (txId: string): Promise<void> => {
     const currentTurn = this.getCurrentTurnInd();
 
-    const transaction = this.transactions.get(id);
+    const transaction = this.transactions.get(txId);
     if (transaction && transaction.tx) {
       transaction.coordinator = currentTurn;
 
@@ -358,15 +361,15 @@ export class MultiSigHandler {
         myPub,
       );
       this.logger.debug(
-        `Commitment generated for tx [${id}]. Broadcasting to the peer with the correct turn...`,
+        `Commitment generated for tx [${txId}]. Broadcasting to the peer with the correct turn...`,
       );
       // don't send if it's my turn
       if (!this.isMyTurn())
-        this.sendMessage(
+        await this.sendMessage(
           {
             type: 'commitment',
             payload: {
-              txId: id,
+              txId: txId,
               commitment: publishCommitments,
             },
           },
@@ -377,6 +380,7 @@ export class MultiSigHandler {
 
   /**
    * handle verified commitment message from other guards
+   * if enough commitments, it will initiate signing
    * @param sender sender for this commitment
    * @param payload user commitment
    * @param signature signature for this commitment message
@@ -492,7 +496,9 @@ export class MultiSigHandler {
                 return Object.keys(transaction.commitments).includes(peer.pub);
               })
               .map((peer) => peer.id!);
-            this.sendMessage(
+
+            release();
+            await this.sendMessage(
               { type: 'initiateSign', payload: signPayload, sign: '' },
               toSendPeers,
             );
@@ -583,11 +589,10 @@ export class MultiSigHandler {
         txId: payload.txId,
       };
 
-      this.sendMessage({ type: 'sign', payload: signPayload, sign: '' }, [
+      release();
+      await this.sendMessage({ type: 'sign', payload: signPayload, sign: '' }, [
         sender,
       ]);
-
-      release();
     } catch (e) {
       this.logger.warn(
         `An unknown exception occurred while handling initiate sign from other peer: ${e}`,
@@ -597,7 +602,8 @@ export class MultiSigHandler {
   };
 
   /**
-   * the peer with the correct turn collects partial proofs and signs the transaction
+   * the peer with the correct turn collects partial proofs and signs the transaction when all proofs are collected
+   * will send the signed transaction to all peers
    * @param sender sender of the proof
    * @param payload proof payload
    */
@@ -650,7 +656,8 @@ export class MultiSigHandler {
         const toSend = this.peers
           .filter((peer) => peer.pub !== myPub)
           .map((peer) => peer.id!);
-        this.sendMessage(
+
+        await this.sendMessage(
           { type: 'signedTx', payload: payload, sign: '' },
           toSend,
         );
@@ -667,6 +674,7 @@ export class MultiSigHandler {
 
   /**
    * handles fully signed transaction
+   * checks if the transaction is valid and resolve the promise
    * @param txBytes base64 encoded signed transaction
    */
   handleSignedTx = async (txBytes: string): Promise<void> => {
@@ -687,89 +695,13 @@ export class MultiSigHandler {
           `Signed transaction ${tx.id().to_str()} is invalid`,
         );
 
-      release()
+      release();
       this.transactions.delete(tx.id().to_str());
     } catch (e) {
       this.logger.warn(
         `An unknown exception occurred while handling signed transaction: ${e}`,
       );
-      release()
-    }
-  };
-
-  /**
-   * handle new message from other guards. first verify message sign
-   * then if sign is valid pass to handler message according to message.
-   * @param messageStr message sent to this peer
-   * @param channel channel over which the message is sent
-   * @param sender the sender id
-   */
-  public handleMessage = (
-    messageStr: string,
-    channel: string,
-    sender: string,
-  ): void => {
-    this.peersMustBeInitialized();
-    const message = JSON.parse(messageStr) as CommunicationMessage;
-    if (
-      message.payload.index !== undefined &&
-      message.payload.index >= 0 &&
-      message.payload.index < this.peers.length &&
-      message.payload.id &&
-      message.sign
-    ) {
-      if (sender !== message.payload.id) {
-        this.logger.warn(
-          `Received message from [${sender}] which using id [${message.payload.id}]`,
-        );
-        return;
-      }
-
-      const index = message.payload.index;
-      if (
-        MultiSigUtils.verifySignature(
-          message.sign,
-          this.peers[index].pub,
-          JSON.stringify(message.payload),
-        )
-      ) {
-        switch (message.type) {
-          case 'register':
-            this.handleRegister(sender, message.payload as RegisterPayload);
-            break;
-          case 'approve':
-            this.handleApprove(sender, message.payload as ApprovePayload);
-            break;
-          case 'generateCommitment':
-            const payload = message.payload as GenerateCommitmentPayload;
-            this.generateCommitment(payload.txId)
-            break;
-          case 'commitment':
-            this.handleCommitment(
-              sender,
-              message.payload as CommitmentPayload,
-              message.sign,
-            );
-            break;
-          case 'initiateSign':
-            this.initiateSign(sender, message.payload as InitiateSignPayload);
-            break;
-
-          case 'sign':
-            this.handleSign(sender, message.payload as SignPayload);
-            break;
-
-          case 'signedTx': {
-            const payload = message.payload as SignedTxPayload;
-            this.handleSignedTx(payload.txBytes);
-            break;
-          }
-        }
-      } else {
-        this.logger.warn(
-          "Ignoring received message in MultiSig. Signature didn't verify",
-        );
-      }
+      release();
     }
   };
 
@@ -777,15 +709,20 @@ export class MultiSigHandler {
    * Apply required changes after changes in public keys
    * @param publicKeys new public keys
    */
-  handlePublicKeysChange = (publicKeys: string[]) => {
+  handlePublicKeysChange = async (publicKeys: string[]) => {
     this.peers = publicKeys.map((publicKey) => ({
       pub: publicKey,
       unapproved: [],
     }));
-    this.sendRegister();
+    await this.sendRegister();
   };
 
-  handleMyTurnForTx = (txId: string) => {
+  /**
+   * if it's this peer's turn, generate commitment for the transaction
+   * asks other peers to generate commitment
+   * @param txId
+   */
+  handleMyTurnForTx = async (txId: string) => {
     const transaction = this.transactions.get(txId);
     if (!transaction) return;
     transaction.simulatedBag = wasm.TransactionHintsBag.empty();
@@ -796,9 +733,9 @@ export class MultiSigHandler {
 
     if (this.isMyTurn() && transaction.coordinator !== myInd) {
       transaction.coordinator = myInd;
-      this.generateCommitment(txId);
-    //   ask peers to generate commitment
-      this.sendMessage({
+      await this.generateCommitment(txId);
+      //   ask peers to generate commitment
+      await this.sendMessage({
         type: 'generateCommitment',
         payload: {
           txId: txId,
@@ -807,12 +744,15 @@ export class MultiSigHandler {
     }
   };
 
-  handleMyTurn = () => {
+  /**
+   * if it's this peer's turn, handle all transactions in the queue for potential signing
+   */
+  handleMyTurn = async () => {
     if (!this.isMyTurn()) return;
     for (const [txId, transaction] of Array.from(this.transactions)) {
-      this.handleMyTurnForTx(txId);
+      await this.handleMyTurnForTx(txId);
     }
-  }
+  };
 
   /**
    * cleaning unsigned transaction after txSignTimeout if the transaction still exist in queue
@@ -853,5 +793,88 @@ export class MultiSigHandler {
         count: cleanedTransactionCount,
       });
     });
+  };
+
+  /**
+   * handle new message from other guards. first verify message sign
+   * then if sign is valid pass to handler message according to message.
+   * @param messageStr message sent to this peer
+   * @param channel channel over which the message is sent
+   * @param sender the sender id
+   */
+  public handleMessage = async (
+    messageStr: string,
+    channel: string,
+    sender: string,
+  ): Promise<void> => {
+    this.peersMustBeInitialized();
+    const message = JSON.parse(messageStr) as CommunicationMessage;
+    if (
+      message.payload.index !== undefined &&
+      message.payload.index >= 0 &&
+      message.payload.index < this.peers.length &&
+      message.payload.id &&
+      message.sign
+    ) {
+      if (sender !== message.payload.id) {
+        this.logger.warn(
+          `Received message from [${sender}] which using id [${message.payload.id}]`,
+        );
+        return;
+      }
+
+      const index = message.payload.index;
+      if (
+        MultiSigUtils.verifySignature(
+          message.sign,
+          this.peers[index].pub,
+          JSON.stringify(message.payload),
+        )
+      ) {
+        switch (message.type) {
+          case 'register':
+            await this.handleRegister(
+              sender,
+              message.payload as RegisterPayload,
+            );
+            break;
+          case 'approve':
+            await this.handleApprove(sender, message.payload as ApprovePayload);
+            break;
+          case 'generateCommitment': {
+            const payload = message.payload as GenerateCommitmentPayload;
+            await this.generateCommitment(payload.txId);
+            break;
+          }
+          case 'commitment':
+            await this.handleCommitment(
+              sender,
+              message.payload as CommitmentPayload,
+              message.sign,
+            );
+            break;
+          case 'initiateSign':
+            await this.initiateSign(
+              sender,
+              message.payload as InitiateSignPayload,
+            );
+            break;
+
+          case 'sign':
+            await this.handleSign(sender, message.payload as SignPayload);
+            break;
+
+          case 'signedTx': {
+            const payload = message.payload as SignedTxPayload;
+            await this.handleSignedTx(payload.txBytes);
+            break;
+          }
+        }
+      } else {
+        this.logger.warn(
+          "Ignoring received message in MultiSig. Signature didn't verify",
+        );
+      }
+    }
   };
 }

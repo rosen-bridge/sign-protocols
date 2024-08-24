@@ -12,7 +12,7 @@ import {
   requestMessage,
   startMessage,
 } from '../../lib/const/signer';
-import { describe, expect, it, vi, beforeEach, MockInstance } from 'vitest';
+import { beforeEach, describe, expect, it, MockInstance, vi } from 'vitest';
 
 describe('TssSigner', () => {
   let signer: TestTssSigner;

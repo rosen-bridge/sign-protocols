@@ -1,13 +1,12 @@
 import { TestGuardDetection } from './TestGuardDetection';
-import { EdDSA } from '../../lib';
+import { EdDSA, Nonce } from '../../lib';
 import {
   approveMessage,
   heartbeatMessage,
   registerMessage,
 } from '../../lib/const/detection';
-import { Nonce } from '../../lib';
 import { generateSigners } from '../testUtils';
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 describe('GuardDetection', () => {
   let detection: TestGuardDetection;

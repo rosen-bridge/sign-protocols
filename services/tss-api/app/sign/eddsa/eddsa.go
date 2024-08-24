@@ -29,7 +29,7 @@ type handler struct {
 var logging *zap.SugaredLogger
 var eddsaHandler handler
 
-//	- Initializes the eddsa sign partyId and peers
+// - Initializes the eddsa sign partyId and peers
 func (s *operationEDDSASign) Init(rosenTss _interface.RosenTss, peers []models.Peer) error {
 
 	s.Logger.Info("initiation eddsa signing process")
@@ -57,9 +57,9 @@ func (s *operationEDDSASign) Init(rosenTss _interface.RosenTss, peers []models.P
 	return nil
 }
 
-//	- creates end and out channel for party,
-//	- calls StartParty function of protocol
-//	- handles end channel and out channel in a go routine
+// - creates end and out channel for party,
+// - calls StartParty function of protocol
+// - handles end channel and out channel in a go routine
 func (s *operationEDDSASign) CreateParty(rosenTss _interface.RosenTss, statusCh chan bool, errorCh chan error) {
 	s.Logger.Info("creating and starting party")
 
@@ -101,7 +101,7 @@ func (s *operationEDDSASign) CreateParty(rosenTss _interface.RosenTss, statusCh 
 	}()
 }
 
-//	- reads new gossip messages from channel and handle it by calling related function in a go routine.
+// - reads new gossip messages from channel and handle it by calling related function in a go routine.
 func (s *operationEDDSASign) StartAction(rosenTss _interface.RosenTss, messageCh chan models.GossipMessage, errorCh chan error) error {
 
 	partyStarted := false
@@ -163,7 +163,7 @@ func (s *operationEDDSASign) StartAction(rosenTss _interface.RosenTss, messageCh
 	}
 }
 
-//	- create eddsa sign operation
+// - create eddsa sign operation
 func NewSignEDDSAOperation(signMessage models.SignMessage) _interface.SignOperation {
 	logging = logger.NewSugar("eddsa-sign")
 	return &operationEDDSASign{
@@ -175,12 +175,12 @@ func NewSignEDDSAOperation(signMessage models.SignMessage) _interface.SignOperat
 	}
 }
 
-//	- returns the class name
+// - returns the class name
 func (s *operationEDDSASign) GetClassName() string {
 	return "eddsaSign"
 }
 
-//	- creates tss parameters and party
+// - creates tss parameters and party
 func (h *handler) StartParty(
 	localTssData *models.TssData,
 	threshold int,
@@ -210,8 +210,8 @@ func (h *handler) StartParty(
 	return nil
 }
 
-//	- loads keygen data from file for signing
-//	- creates tss party ID with p2pID
+// - loads keygen data from file for signing
+// - creates tss party ID with p2pID
 func (h *handler) LoadData(rosenTss _interface.RosenTss) (*tss.PartyID, error) {
 	_, err1 := rosenTss.GetMetaData(models.EDDSA)
 	if h.savedData.ShareID == nil || (err1 != nil && err1.Error() == models.EDDSANoMetaDataFoundError) {
@@ -234,7 +234,7 @@ func (h *handler) LoadData(rosenTss _interface.RosenTss) (*tss.PartyID, error) {
 	return h.pID, nil
 }
 
-//	- returns key_list and shared_ID of peer stored in the struct
+// - returns key_list and shared_ID of peer stored in the struct
 func (h *handler) GetData() ([]*big.Int, *big.Int) {
 	return h.savedData.Ks, h.savedData.ShareID
 }

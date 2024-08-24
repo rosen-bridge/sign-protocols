@@ -26,14 +26,14 @@ interface SingleCommitmentJson {
 }
 
 interface SingleProofJson {
-  hint: string,
+  hint: string;
   pubkey: {
-    op: string,
-    h: string,
-  },
-  challenge: string,
-  proof: string,
-  position: string
+    op: string;
+    h: string;
+  };
+  challenge: string;
+  proof: string;
+  position: string;
 }
 
 interface CommitmentJson {
@@ -47,9 +47,9 @@ interface TxQueued {
   dataBoxes: Array<wasm.ErgoBox>;
   secret?: wasm.TransactionHintsBag;
   simulatedBag?: wasm.TransactionHintsBag;
-  signs: Record<string, PublishedProof>
-  commitments: Record<string, PublishedCommitment>
-  commitmentSigns: Record<string, string>
+  signs: Record<string, PublishedProof>;
+  commitments: Record<string, PublishedCommitment>;
+  commitmentSigns: Record<string, string>;
   resolve?: (value: wasm.Transaction | PromiseLike<wasm.Transaction>) => void;
   reject?: (reason?: any) => void;
   createTime: number;
@@ -82,7 +82,6 @@ interface SingleProof {
   proof: string;
   position: string;
 }
-
 
 interface PublishedCommitment {
   [index: string]: Array<SingleCommitment>;
@@ -127,9 +126,15 @@ type Payload =
   | SignedTxPayload
   | GenerateCommitmentPayload;
 
-
 interface CommunicationMessage {
-  type: 'register' | 'approve' | 'commitment' | 'sign' | 'initiateSign' | 'signedTx' | "generateCommitment";
+  type:
+    | 'register'
+    | 'approve'
+    | 'commitment'
+    | 'sign'
+    | 'initiateSign'
+    | 'signedTx'
+    | 'generateCommitment';
   sign?: string;
   payload: Payload;
 }
@@ -161,5 +166,5 @@ export {
   SingleProof,
   PublishedProof,
   SignedTxPayload,
-  GenerateCommitmentPayload
+  GenerateCommitmentPayload,
 };
