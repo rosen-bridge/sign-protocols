@@ -10,6 +10,12 @@ class TestUtils {
    */
   static generateRandomId = (): string => randomBytes(32).toString('hex');
 
+  /**
+   * generates a MultiSigHandler instance
+   * @param secret secret of the handler
+   * @param submit submit function for messages
+   * @param pks public keys of the handlers
+   */
   static generateMultiSigHandlerInstance = async (
     secret: string,
     submit: (msg: string, peers: Array<string>) => unknown,
@@ -30,22 +36,6 @@ class TestUtils {
       getPeerId: () => Promise.resolve(testPubs[secretInd]),
     });
     return handler;
-  };
-
-  static messageToPayload = (
-    message: any,
-    ind: number,
-    secret: string,
-  ): any => {
-    const payload = message.payload;
-    payload.index = ind;
-    payload.id = ind.toString();
-    const sec = Buffer.from(secret, 'hex');
-    const payloadStr = JSON.stringify(message.payload);
-    message.sign = Buffer.from(
-      Encryption.sign(payloadStr, Buffer.from(sec)),
-    ).toString('base64');
-    return message;
   };
 }
 

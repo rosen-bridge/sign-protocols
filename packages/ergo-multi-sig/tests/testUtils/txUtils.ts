@@ -25,18 +25,35 @@ import {
 } from 'ergo-lib-wasm-nodejs';
 import { headers } from '../testData';
 
+/**
+ * Converts a number to a BoxValue
+ * @param val number to convert
+ */
 function getBoxValue(val: any) {
   return BoxValue.from_i64(I64.from_str(val.toString()));
 }
 
+/**
+ * Converts a string to a BoxId
+ * @param id string to convert
+ */
 function idToBoxId(id: string) {
   return BoxId.from_str(id);
 }
 
+/**
+ * Converts an address to a contract
+ * @param address string to convert
+ */
 function addressToContract(address: string) {
   return Contract.pay_to_address(Address.from_mainnet_str(address));
 }
 
+/**
+ * Converts a JS object to a ErgoBoxCandidate
+ * @param out JS object to convert
+ * @param height height of the box
+ */
 function jsToCandidate(out: any, height: number) {
   const tree = ErgoTree.from_base16_bytes(out.ergoTree);
   const address = Address.recreate_from_ergo_tree(tree).to_base58(
@@ -65,6 +82,11 @@ function jsToCandidate(out: any, height: number) {
   return myOut.build();
 }
 
+/**
+ * Converts a JS object to a ErgoBoxCandidate
+ * @param tree ErgoTree of the box
+ * @param willGet [tokenId, amount] of the box
+ */
 function getOutBoxJs(tree: string, willGet: [string, number]) {
   let ergVal = Number(process.env.MIN_ERG);
   if (willGet[0].length <= 10) ergVal = willGet[1];
@@ -81,6 +103,11 @@ function getOutBoxJs(tree: string, willGet: [string, number]) {
   return out;
 }
 
+/**
+ * Converts a JS object to a ErgoBoxCandidate
+ * @param tree ErgoTree of the box
+ * @param willGet [tokenId, amount] of the box
+ */
 function getOutBox(tree: string, willGet: [string, number]) {
   let ergVal = Number(process.env.MIN_ERG);
   if (willGet[0].length <= 10) ergVal = willGet[1];
@@ -95,6 +122,14 @@ function getOutBox(tree: string, willGet: [string, number]) {
   return jsToCandidate(out, 0);
 }
 
+/**
+ * Converts JS objects to an UnsignedTransaction
+ * @param inputs tx inputs
+ * @param outputs tx outputs
+ * @param dInputs tx data inputs
+ * @param height height of the tx
+ * @param fee fee of the tx
+ */
 function jsToUnsignedTx(
   inputs: any,
   outputs: any,
@@ -127,6 +162,14 @@ function jsToUnsignedTx(
   return unsignedTx;
 }
 
+/**
+ * Converts JS tx to a ReducedTransaction
+ * @param inputs tx inputs
+ * @param outputs tx outputs
+ * @param dInputs tx data inputs
+ * @param height height of the tx
+ * @param fee fee of the tx
+ */
 function jsToReducedTx(
   inputs: any,
   outputs: any,
@@ -150,6 +193,10 @@ function jsToReducedTx(
   );
 }
 
+/**
+ * Get tokens from assets
+ * @param assets assets of the box
+ */
 function getTokens(assets: any) {
   const inTokens: any = {};
   assets.forEach((asset: any) => {
@@ -162,6 +209,13 @@ function getTokens(assets: any) {
   return inTokens;
 }
 
+/**
+ * Get change box for the tx
+ * @param ins tx inputs
+ * @param outs tx outputs
+ * @param changeTree ErgoTree of the change box
+ * @param fee fee of the tx
+ */
 function getChangeBoxJs(ins: any, outs: any, changeTree: string, fee: number) {
   const inVal = ins.reduce((acc: number, i: any) => acc + Number(i.value), 0);
   const outVal = outs.reduce((acc: number, i: any) => acc + Number(i.value), 0);
