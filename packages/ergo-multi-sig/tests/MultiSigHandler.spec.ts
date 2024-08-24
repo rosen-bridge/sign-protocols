@@ -300,9 +300,7 @@ describe('MultiSigHandler', () => {
       );
 
       // run test
-      handler.sign(reduced, requiredSings, boxes, dataBoxes).then(() => {
-        console.log('sign returned');
-      });
+      handler.sign(reduced, requiredSings, boxes, dataBoxes);
       const { transaction, release } = await handler.getQueuedTransaction(
         reduced.unsigned_tx().id().to_str(),
       );
