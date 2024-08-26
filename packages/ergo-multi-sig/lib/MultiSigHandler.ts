@@ -702,7 +702,7 @@ export class MultiSigHandler {
         tx,
         transaction.boxes,
       );
-      this.logger.debug(
+      this.logger.info(
         `Received signed tx [${tx.id().to_str()}] and it is ${isTxValid ? 'valid' : 'invalid'}`,
       );
 
