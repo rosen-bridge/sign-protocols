@@ -15,7 +15,7 @@ import (
 	"rosen-bridge/tss-api/models"
 )
 
-// get absolute address of an address
+//	get absolute address of an address
 func GetAbsoluteAddress(address string) (string, error) {
 	var absAddress string
 	switch address[0:1] {
@@ -50,7 +50,7 @@ func GetPKFromECDSAPub(x *big.Int, y *big.Int) []byte {
 	return elliptic.MarshalCompressed(tss.EC(), x, y)
 }
 
-// reads in config file and ENV variables if set.
+//	reads in config file and ENV variables if set.
 func InitConfig(configFile string) (models.Config, error) {
 	// Search config in home directory with name "default" (without extension).
 	viper.SetConfigFile(configFile)
@@ -69,7 +69,7 @@ func InitConfig(configFile string) (models.Config, error) {
 	return conf, nil
 }
 
-// finds index of element in a slice of bigInt
+//	finds index of element in a slice of bigInt
 func IndexOf(collection []*big.Int, el *big.Int) int {
 	for i, x := range collection {
 		if x.Cmp(el) == 0 {
@@ -79,7 +79,7 @@ func IndexOf(collection []*big.Int, el *big.Int) int {
 	return -1
 }
 
-// setups files and creates them
+//	setups files and creates them
 func SetupDir(address string) (string, error) {
 	absAddress, err := GetAbsoluteAddress(address)
 	if err != nil {

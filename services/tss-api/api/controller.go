@@ -11,7 +11,7 @@ import (
 	"rosen-bridge/tss-api/models"
 )
 
-// Interface of an app controller
+//	Interface of an app controller
 type TssController interface {
 	Threshold() echo.HandlerFunc
 	Sign() echo.HandlerFunc
@@ -31,7 +31,7 @@ type response struct {
 
 var logging *zap.SugaredLogger
 
-// Constructor of an app controller
+//	Constructor of an app controller
 func NewTssController(rosenTss _interface.RosenTss) TssController {
 	logging = logger.NewSugar("controller")
 	return &tssController{
@@ -40,7 +40,7 @@ func NewTssController(rosenTss _interface.RosenTss) TssController {
 	}
 }
 
-// check if there is any common operation between forbidden and running ones.
+//	check if there is any common operation between forbidden and running ones.
 func (tssController *tssController) checkKeygenOperation(crypto string) error {
 	forbiddenOperations := []string{crypto + "Sign", crypto + "Regroup"}
 	operations := tssController.rosenTss.GetKeygenOperations()
@@ -61,7 +61,7 @@ func (tssController *tssController) Validate(i interface{}) error {
 	return nil
 }
 
-// check if there is any common operation between forbidden and running ones.
+//	check if there is any common operation between forbidden and running ones.
 func (tssController *tssController) checkSignOperation(crypto string) error {
 	forbiddenOperations := []string{crypto + "Keygen", crypto + "Regroup"}
 	operations := tssController.rosenTss.GetSignOperations()
@@ -75,7 +75,7 @@ func (tssController *tssController) checkSignOperation(crypto string) error {
 	return nil
 }
 
-// check if there is any common operation between forbidden and running ones.
+//	check if there is any common operation between forbidden and running ones.
 func (tssController *tssController) checkOperation(operationName string, crypto string) error {
 	switch operationName {
 	case "keygen":
@@ -122,7 +122,7 @@ func (tssController *tssController) Keygen() echo.HandlerFunc {
 	}
 }
 
-// returns echo handler, starting new sign process.
+//	returns echo handler, starting new sign process.
 func (tssController *tssController) Sign() echo.HandlerFunc {
 	return func(c echo.Context) (err error) {
 		data := models.SignMessage{}
@@ -162,7 +162,7 @@ func (tssController *tssController) Sign() echo.HandlerFunc {
 	}
 }
 
-// returns echo handler, receiving message from p2p and passing to related channel
+//	returns echo handler, receiving message from p2p and passing to related channel
 func (tssController *tssController) Message() echo.HandlerFunc {
 	return func(c echo.Context) error {
 		var data models.Message
@@ -182,7 +182,7 @@ func (tssController *tssController) Message() echo.HandlerFunc {
 	}
 }
 
-// returns echo handler, get threshold of meta data
+//	returns echo handler, get threshold of meta data
 func (tssController *tssController) Threshold() echo.HandlerFunc {
 	return func(c echo.Context) error {
 		crypto := c.QueryParam("crypto")
