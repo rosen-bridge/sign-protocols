@@ -235,6 +235,7 @@ export class MultiSigHandler {
   ) => {
     return this.getQueuedTransaction(tx.unsigned_tx().id().to_str())
       .then(({ transaction, release }) => {
+        this.logger.debug('Adding transaction to MultiSig queue...');
         transaction.tx = tx;
         transaction.boxes = boxes;
         transaction.requiredSigner = requiredSign;
@@ -497,6 +498,10 @@ export class MultiSigHandler {
               })
               .map((peer) => peer.id!);
 
+            this.logger.debug(
+              `All commitments received for tx [${payload.txId}]. Initiating sign...`,
+            );
+
             release();
             await this.sendMessage(
               { type: 'initiateSign', payload: signPayload, sign: '' },
@@ -534,6 +539,7 @@ export class MultiSigHandler {
       );
       return;
     }
+    this.logger.debug(`Initiating sign for tx [${payload.txId}]...`);
     try {
       const { transaction, release } = await this.getQueuedTransaction(
         payload.txId,
@@ -612,9 +618,16 @@ export class MultiSigHandler {
       const { transaction, release } = await this.getQueuedTransaction(
         payload.txId,
       );
+      this.logger.debug(
+        `Received proof from [${sender}] for tx [${payload.txId}]...`,
+      );
       transaction.signs[sender] = payload.proof;
 
       if (Object.keys(transaction.signs).length >= transaction.requiredSigner) {
+        this.logger.debug(
+          `All proofs received for tx [${payload.txId}]. Signing...`,
+        );
+
         const allHints = wasm.TransactionHintsBag.empty();
         const signedOrder = Object.keys(transaction.signs);
         const signedProofs = signedOrder.map((key) => transaction.signs[key]);
@@ -649,7 +662,7 @@ export class MultiSigHandler {
         release();
         await this.handleSignedTx(txBytes);
 
-        const payload = {
+        const txPayload = {
           txBytes: txBytes,
         };
         const myPub = this.peers[this.getIndex()].pub;
@@ -658,7 +671,7 @@ export class MultiSigHandler {
           .map((peer) => peer.id!);
 
         await this.sendMessage(
-          { type: 'signedTx', payload: payload, sign: '' },
+          { type: 'signedTx', payload: txPayload, sign: '' },
           toSend,
         );
       }
@@ -689,6 +702,10 @@ export class MultiSigHandler {
         tx,
         transaction.boxes,
       );
+      this.logger.debug(
+        `Received signed tx [${tx.id().to_str()}] and it is ${isTxValid ? 'valid' : 'invalid'}`,
+      );
+
       if (isTxValid && transaction.resolve) transaction.resolve!(tx);
       if (!isTxValid && transaction.reject)
         transaction.reject!(
@@ -732,6 +749,9 @@ export class MultiSigHandler {
     const myInd = this.getIndex();
 
     if (this.isMyTurn() && transaction.coordinator !== myInd) {
+      this.logger.debug(
+        `Initiating sign for tx [${txId}] because it's my turn...`,
+      );
       transaction.coordinator = myInd;
       await this.generateCommitment(txId);
       //   ask peers to generate commitment
@@ -749,6 +769,7 @@ export class MultiSigHandler {
    */
   handleMyTurn = async () => {
     if (!this.isMyTurn()) return;
+    this.logger.debug('Handling my turn for all transactions in the queue...');
     for (const [txId, transaction] of Array.from(this.transactions)) {
       await this.handleMyTurnForTx(txId);
     }
