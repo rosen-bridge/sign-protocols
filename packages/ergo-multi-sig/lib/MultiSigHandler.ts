@@ -374,7 +374,7 @@ export class MultiSigHandler {
               commitment: publishCommitments,
             },
           },
-          this.peers[currentTurn].id ? [this.peers[currentTurn].id] : [],
+          this.peers[currentTurn].id ? [this.peers[currentTurn].id!] : [],
         );
     }
   };
