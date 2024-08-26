@@ -18,7 +18,6 @@ import { Semaphore } from 'await-semaphore';
 import Encryption from './utils/Encryption';
 import { MultiSigUtils } from './MultiSigUtils';
 import { AbstractLogger, DummyLogger } from '@rosen-bridge/abstract-logger';
-import { release } from 'node:os';
 
 export class MultiSigHandler {
   protected logger: AbstractLogger;
@@ -246,7 +245,6 @@ export class MultiSigHandler {
         this.logger.error(
           `Error in adding transaction to MultiSig queue: ${e}`,
         );
-        release();
       });
   };
 
@@ -603,7 +601,6 @@ export class MultiSigHandler {
       this.logger.warn(
         `An unknown exception occurred while handling initiate sign from other peer: ${e}`,
       );
-      release();
     }
   };
 
@@ -681,7 +678,6 @@ export class MultiSigHandler {
       this.logger.warn(
         `An unknown exception occurred while handling initiate sign from other peer: ${e}`,
       );
-      release();
     }
   };
 
@@ -718,7 +714,6 @@ export class MultiSigHandler {
       this.logger.warn(
         `An unknown exception occurred while handling signed transaction: ${e}`,
       );
-      release();
     }
   };
 
