@@ -25,11 +25,31 @@ import {
 } from 'ergo-lib-wasm-nodejs';
 import { headers } from '../testData';
 
+type Asset = {
+  tokenId: string;
+  amount: number;
+};
+
+type ErgoBoxJs = {
+  value: number;
+  ergoTree: string;
+  assets?: Asset[];
+  additionalRegisters?: { [key: string]: string };
+};
+
+type InputBox = {
+  boxId: string;
+  value: number;
+  assets: Asset[];
+};
+
+type TokenDict = { [tokenId: string]: number };
+
 /**
  * Converts a number to a BoxValue
  * @param val number to convert
  */
-function getBoxValue(val: number) {
+function getBoxValue(val: number): BoxValue {
   return BoxValue.from_i64(I64.from_str(val.toString()));
 }
 
@@ -37,7 +57,7 @@ function getBoxValue(val: number) {
  * Converts a string to a BoxId
  * @param id string to convert
  */
-function idToBoxId(id: string) {
+function idToBoxId(id: string): BoxId {
   return BoxId.from_str(id);
 }
 
@@ -45,7 +65,7 @@ function idToBoxId(id: string) {
  * Converts an address to a contract
  * @param address string to convert
  */
-function addressToContract(address: string) {
+function addressToContract(address: string): Contract {
   return Contract.pay_to_address(Address.from_mainnet_str(address));
 }
 
@@ -54,7 +74,7 @@ function addressToContract(address: string) {
  * @param out JS object to convert
  * @param height height of the box
  */
-function jsToCandidate(out: any, height: number) {
+function jsToCandidate(out: ErgoBoxJs, height: number): ErgoBoxCandidate {
   const tree = ErgoTree.from_base16_bytes(out.ergoTree);
   const address = Address.recreate_from_ergo_tree(tree).to_base58(
     NetworkPrefix.Mainnet,
@@ -65,14 +85,14 @@ function jsToCandidate(out: any, height: number) {
     height,
   );
 
-  if (out.assets === undefined) out.assets = [];
-  out.assets.forEach((i: any) => {
+  if (!out.assets) out.assets = [];
+  out.assets.forEach((i: Asset) => {
     const tokAm = TokenAmount.from_i64(I64.from_str(i.amount.toString()));
     myOut.add_token(TokenId.from_str(i.tokenId), tokAm);
   });
-  if (out.additionalRegisters === undefined) out.additionalRegisters = {};
+  if (!out.additionalRegisters) out.additionalRegisters = {};
 
-  const vals: any = Object.values(out.additionalRegisters);
+  const vals: string[] = Object.values(out.additionalRegisters);
   for (let i = 0; i < vals.length; i++) {
     myOut.set_register_value(
       i + 4,
@@ -87,11 +107,11 @@ function jsToCandidate(out: any, height: number) {
  * @param tree ErgoTree of the box
  * @param willGet [tokenId, amount] of the box
  */
-function getOutBoxJs(tree: string, willGet: [string, number]) {
+function getOutBoxJs(tree: string, willGet: [string, number]): ErgoBoxJs {
   let ergVal = Number(process.env.MIN_ERG);
   if (willGet[0].length <= 10) ergVal = willGet[1];
 
-  const out: any = {
+  const out: ErgoBoxJs = {
     value: ergVal,
     ergoTree: tree,
     assets: [],
@@ -99,7 +119,7 @@ function getOutBoxJs(tree: string, willGet: [string, number]) {
   };
 
   if (willGet[0].length > 10 && willGet[1] > 0)
-    out['assets'] = [{ tokenId: willGet[0], amount: willGet[1] }];
+    out.assets = [{ tokenId: willGet[0], amount: willGet[1] }];
   return out;
 }
 
@@ -108,17 +128,17 @@ function getOutBoxJs(tree: string, willGet: [string, number]) {
  * @param tree ErgoTree of the box
  * @param willGet [tokenId, amount] of the box
  */
-function getOutBox(tree: string, willGet: [string, number]) {
+function getOutBox(tree: string, willGet: [string, number]): ErgoBoxCandidate {
   let ergVal = Number(process.env.MIN_ERG);
   if (willGet[0].length <= 10) ergVal = willGet[1];
 
-  const out: any = {
+  const out: ErgoBoxJs = {
     value: ergVal,
     ergoTree: tree,
   };
 
   if (willGet[0].length > 10 && willGet[1] > 0)
-    out['assets'] = [{ tokenId: willGet[0], amount: willGet[1] }];
+    out.assets = [{ tokenId: willGet[0], amount: willGet[1] }];
   return jsToCandidate(out, 0);
 }
 
@@ -131,12 +151,12 @@ function getOutBox(tree: string, willGet: [string, number]) {
  * @param fee fee of the tx
  */
 function jsToUnsignedTx(
-  inputs: any,
-  outputs: any,
-  dInputs: any,
+  inputs: InputBox[],
+  outputs: ErgoBoxJs[],
+  dInputs: InputBox[],
   height: number,
   fee: number,
-) {
+): UnsignedTransaction {
   const unsignedInputs = new UnsignedInputs();
   for (const box of inputs) {
     const unsignedInput = UnsignedInput.from_box_id(idToBoxId(box.boxId));
@@ -147,19 +167,14 @@ function jsToUnsignedTx(
   for (const d of dInputs) dataInputs.add(new DataInput(idToBoxId(d.boxId)));
 
   const unsignedOutputs = ErgoBoxCandidates.empty();
-  outputs.forEach((i: any) => {
+  outputs.forEach((i: ErgoBoxJs) => {
     const box = jsToCandidate(i, height);
     unsignedOutputs.add(box);
   });
   const feeBox = ErgoBoxCandidate.new_miner_fee_box(getBoxValue(fee), height);
   unsignedOutputs.add(feeBox);
 
-  const unsignedTx = new UnsignedTransaction(
-    unsignedInputs,
-    dataInputs,
-    unsignedOutputs,
-  );
-  return unsignedTx;
+  return new UnsignedTransaction(unsignedInputs, dataInputs, unsignedOutputs);
 }
 
 /**
@@ -171,12 +186,12 @@ function jsToUnsignedTx(
  * @param fee fee of the tx
  */
 function jsToReducedTx(
-  inputs: any,
-  outputs: any,
-  dInputs: any,
+  inputs: InputBox[],
+  outputs: ErgoBoxJs[],
+  dInputs: InputBox[],
   height: number,
   fee: number,
-) {
+): ReducedTransaction {
   const unsignedTx = jsToUnsignedTx(inputs, outputs, dInputs, height, fee);
 
   const blockHeaders = BlockHeaders.from_json(headers);
@@ -197,9 +212,9 @@ function jsToReducedTx(
  * Get tokens from assets
  * @param assets assets of the box
  */
-function getTokens(assets: any) {
-  const inTokens: any = {};
-  assets.forEach((asset: any) => {
+function getTokens(assets: Asset[]): TokenDict {
+  const inTokens: TokenDict = {};
+  assets.forEach((asset: Asset) => {
     const tid = asset.tokenId;
     if (!(tid in inTokens)) {
       inTokens[tid] = 0;
@@ -216,11 +231,20 @@ function getTokens(assets: any) {
  * @param changeTree ErgoTree of the change box
  * @param fee fee of the tx
  */
-function getChangeBoxJs(ins: any, outs: any, changeTree: string, fee: number) {
-  const inVal = ins.reduce((acc: number, i: any) => acc + Number(i.value), 0);
-  const outVal = outs.reduce((acc: number, i: any) => acc + Number(i.value), 0);
-  const inTokens = getTokens(ins.map((i: any) => i.assets).flat());
-  const outTokens = getTokens(outs.map((i: any) => i.assets).flat());
+function getChangeBoxJs(
+  ins: InputBox[],
+  outs: ErgoBoxJs[],
+  changeTree: string,
+  fee: number,
+): ErgoBoxJs {
+  const inVal = ins.reduce((acc: number, i) => acc + Number(i.value), 0);
+  const outVal = outs.reduce((acc: number, i) => acc + Number(i.value), 0);
+  const inTokens = getTokens(ins.map((i) => i.assets).flat());
+  const outAssets = outs
+    .map((i) => i.assets)
+    .flat()
+    .filter((i): i is Asset => i !== undefined);
+  const outTokens = getTokens(outAssets);
 
   const keys = new Set(Object.keys(inTokens).concat(Object.keys(outTokens)));
 
@@ -238,12 +262,12 @@ function getChangeBoxJs(ins: any, outs: any, changeTree: string, fee: number) {
 
   if (
     inVal - outVal - fee < 0 ||
-    Object.values(inTokens).filter((i: any) => i < 0).length > 0
+    Object.values(inTokens).filter((i) => i < 0).length > 0
   ) {
     throw new Error('Not enough funds');
   }
 
-  assets = assets.filter((i: any) => i.amount > 0);
+  assets = assets.filter((i) => i.amount > 0);
   return {
     value: inVal - outVal - fee,
     ergoTree: changeTree,
