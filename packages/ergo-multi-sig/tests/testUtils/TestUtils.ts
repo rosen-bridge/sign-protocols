@@ -3,6 +3,7 @@ import { MultiSigHandler, MultiSigUtils } from '../../lib';
 import { mockedErgoStateContext, testPubs, testSecrets } from '../testData';
 import TestConfigs from './TestConfigs';
 import Encryption from '../../lib/utils/Encryption';
+import * as wasm from 'ergo-lib-wasm-nodejs';
 
 class TestUtils {
   /**
@@ -36,6 +37,32 @@ class TestUtils {
       getPeerId: () => Promise.resolve(testPubs[secretInd]),
     });
     return handler;
+  };
+
+  /**
+   * add a transaction to the queue without initiating sign
+   * @param handler multi-sig handler
+   * @param tx reduced transaction for multi-sig transaction
+   * @param requiredSign number of required signatures
+   * @param boxes input boxes for transaction
+   * @param dataBoxes data input boxes for transaction
+   */
+  static addTx = async (
+    handler: MultiSigHandler,
+    tx: wasm.ReducedTransaction,
+    requiredSign: number,
+    boxes: Array<wasm.ErgoBox>,
+    dataBoxes: Array<wasm.ErgoBox>,
+  ) => {
+    return handler
+      .getQueuedTransaction(tx.unsigned_tx().id().to_str())
+      .then(({ transaction, release }) => {
+        transaction.tx = tx;
+        transaction.boxes = boxes;
+        transaction.requiredSigner = requiredSign;
+        transaction.dataBoxes = dataBoxes;
+        release();
+      });
   };
 }
 

@@ -113,39 +113,6 @@ describe('MultiSigHandler', () => {
     });
   });
 
-  describe('handleRegister', () => {
-    /**
-     * @target MultiSigHandler.handleRegister should handle and send response successfully
-     * @dependencies
-     * @scenario
-     * - mock MultiSigHandler.sendMessage
-     * - run test
-     * - check if function got called
-     * @expected
-     * - `sendMessage` should got called
-     */
-    it('should handle and send response successfully', async () => {
-      // mock MultiSigHandler.sendMessage
-      const handler = await TestUtils.generateMultiSigHandlerInstance(
-        testSecrets[0],
-        vi.fn(),
-        testPubs,
-      );
-      const mockedSendMessage = vi.fn();
-      vi.spyOn(handler, 'sendMessage').mockImplementation(mockedSendMessage);
-
-      // run test
-      await handler.handleRegister('sender', {
-        index: 1,
-        nonce: 'nonce',
-        myId: 'myId',
-      });
-
-      // check if function got called
-      expect(mockedSendMessage).toHaveBeenCalledOnce();
-    });
-  });
-
   describe('handlePublicKeysChange', () => {
     /**
      * @target MultiSigHandler.handlePublicKeysChange should update peers
@@ -168,7 +135,6 @@ describe('MultiSigHandler', () => {
         testPubs,
       );
       const mockedSendRegister = vi.fn();
-      vi.spyOn(handler, 'sendRegister').mockImplementation(mockedSendRegister);
 
       const updatedPublicKeys = [
         '028d938d67befbb8ab3513c44886c16c2bcd62ed4595b9b216b20ef03eb8fb8fb1',
@@ -180,51 +146,9 @@ describe('MultiSigHandler', () => {
         '028d938d67befbb8ab3513c44886c16c2bcd62ed4595b9b216b20ef03eb8fb8fb7',
       ];
 
-      handler.handlePublicKeysChange(updatedPublicKeys);
-
+      await handler.handlePublicKeysChange(updatedPublicKeys);
       // check if new index is verified
       expect(handler.verifyIndex(6)).toEqual(true);
-
-      // check if function got called
-      expect(mockedSendRegister).toHaveBeenCalledOnce();
-    });
-  });
-
-  describe('handleApprove', () => {
-    /**
-     * @target MultiSigHandler.handleApprove should send message with
-     * expected keys
-     * @dependencies
-     * - Dialer
-     * @scenario
-     * - mock Dialer.sendMessage to throw error if expectation does not meet
-     * - run test
-     * @expected
-     * - sent message should contain 'type', 'sign' and 'payload' key
-     * - sent message payload should contain 'nonceToSign'
-     */
-    it('should send message with expected keys', async () => {
-      // mock Dialer.sendMessage
-
-      // run test
-      const sender = senderMock('approve', {
-        index: 0,
-        nonce: '1',
-        myId: testPubs[0],
-        nonceToSign: '',
-        id: testPubs[0],
-      });
-      const handler = await TestUtils.generateMultiSigHandlerInstance(
-        testSecrets[0],
-        sender,
-        testPubs,
-      );
-      handler.handleApprove('sender', {
-        index: 1,
-        nonce: 'nonce',
-        myId: testPubs[1],
-        nonceToSign: '1',
-      });
     });
   });
 
@@ -369,7 +293,7 @@ describe('MultiSigHandler', () => {
         testPubs,
       );
       const txId = reduced.unsigned_tx().id().to_str();
-      await handler.addTx(reduced, requiredSings, boxes, dataBoxes);
+      await TestUtils.addTx(handler, reduced, requiredSings, boxes, dataBoxes);
       const { transaction, release } = await handler.getQueuedTransaction(txId);
       expect(transaction.boxes.length).toEqual(1);
       expect(transaction.requiredSigner).toEqual(6);
@@ -393,7 +317,10 @@ describe('MultiSigHandler', () => {
         vi.fn(),
         testPubs,
       );
-      await handler.addTx(reduced, requiredSings, boxes, dataBoxes);
+      await TestUtils.addTx(handler, reduced, requiredSings, boxes, dataBoxes);
+      for (let i = 0; i < testPubs.length; i++) {
+        await handler.setPeerId(i, testPubs[i]);
+      }
       handler.generateCommitment(reduced.unsigned_tx().id().to_str());
       const { transaction, release } = await handler.getQueuedTransaction(
         reduced.unsigned_tx().id().to_str(),
@@ -422,7 +349,7 @@ describe('MultiSigHandler', () => {
       );
       const mockedSendMessage = vi.fn();
       vi.spyOn(handler, 'sendMessage').mockImplementation(mockedSendMessage);
-      await handler.addTx(reduced, requiredSings, boxes, dataBoxes);
+      await TestUtils.addTx(handler, reduced, requiredSings, boxes, dataBoxes);
       vi.setSystemTime(0);
       handler.generateCommitment(reduced.unsigned_tx().id().to_str());
       expect(mockedSendMessage).not.toHaveBeenCalled();
@@ -445,9 +372,12 @@ describe('MultiSigHandler', () => {
         vi.fn(),
         testPubs,
       );
+      for (let i = 0; i < testPubs.length; i++) {
+        await handler.setPeerId(i, testPubs[i]);
+      }
       const mockedSendMessage = vi.fn();
       vi.spyOn(handler, 'sendMessage').mockImplementation(mockedSendMessage);
-      await handler.addTx(reduced, requiredSings, boxes, dataBoxes);
+      await TestUtils.addTx(handler, reduced, requiredSings, boxes, dataBoxes);
       vi.setSystemTime(turnTime);
       await handler.generateCommitment(reduced.unsigned_tx().id().to_str());
       expect(mockedSendMessage).toHaveBeenCalled();
@@ -475,7 +405,7 @@ describe('MultiSigHandler', () => {
       );
       const mockedSendMessage = vi.fn();
       vi.spyOn(handler, 'sendMessage').mockImplementation(mockedSendMessage);
-      await handler.addTx(reduced, requiredSings, boxes, dataBoxes);
+      await TestUtils.addTx(handler, reduced, requiredSings, boxes, dataBoxes);
 
       vi.setSystemTime(turnTime);
       await handler.handleCommitment(
@@ -508,11 +438,15 @@ describe('MultiSigHandler', () => {
         vi.fn(),
         testPubs,
       );
+      for (let i = 0; i < testPubs.length; i++) {
+        await handler.setPeerId(i, testPubs[i]);
+      }
       const mockedSendMessage = vi.fn();
       vi.spyOn(handler, 'sendMessage').mockImplementation(mockedSendMessage);
-      await handler.addTx(reduced, requiredSings, boxes, dataBoxes);
+      await TestUtils.addTx(handler, reduced, requiredSings, boxes, dataBoxes);
 
       vi.setSystemTime(0);
+      await handler.generateCommitment(reduced.unsigned_tx().id().to_str());
       await handler.handleCommitment(
         '0',
         testCmt.payload as CommitmentPayload,
@@ -553,7 +487,16 @@ describe('MultiSigHandler', () => {
       await Promise.all(
         handlers.map((handler) => {
           handler.handlePublicKeysChange(testPubs);
-          return handler.addTx(reduced, requiredSings, boxes, dataBoxes);
+          for (let i = 0; i < testPubs.length; i++) {
+            handler.setPeerId(i, testPubs[i]);
+          }
+          return TestUtils.addTx(
+            handler,
+            reduced,
+            requiredSings,
+            boxes,
+            dataBoxes,
+          );
         }),
       );
       await Promise.all(
@@ -599,7 +542,16 @@ describe('MultiSigHandler', () => {
       await Promise.all(
         handlers.map((handler) => {
           handler.handlePublicKeysChange(testPubs);
-          return handler.addTx(reduced, requiredSings, boxes, dataBoxes);
+          for (let i = 0; i < testPubs.length; i++) {
+            handler.setPeerId(i, testPubs[i]);
+          }
+          return TestUtils.addTx(
+            handler,
+            reduced,
+            requiredSings,
+            boxes,
+            dataBoxes,
+          );
         }),
       );
       await Promise.all(
@@ -637,7 +589,7 @@ describe('MultiSigHandler', () => {
         testPubs,
       );
       vi.setSystemTime(0);
-      await handler.addTx(reduced, requiredSings, boxes, dataBoxes);
+      await TestUtils.addTx(handler, reduced, requiredSings, boxes, dataBoxes);
       vi.setSystemTime(10e6);
       handler.cleanup();
       const { transaction, release } = await handler.getQueuedTransaction(
@@ -665,7 +617,7 @@ describe('MultiSigHandler', () => {
         testPubs,
       );
       vi.setSystemTime(0);
-      await handler.addTx(reduced, requiredSings, boxes, dataBoxes);
+      await TestUtils.addTx(handler, reduced, requiredSings, boxes, dataBoxes);
       vi.setSystemTime(1e2);
       handler.cleanup();
       const { transaction, release } = await handler.getQueuedTransaction(
@@ -694,7 +646,7 @@ describe('MultiSigHandler', () => {
         sender,
         testPubs,
       );
-      await handler.addTx(reduced, requiredSings, boxes, dataBoxes);
+      await TestUtils.addTx(handler, reduced, requiredSings, boxes, dataBoxes);
       vi.setSystemTime(turnTime);
       await handler.handleMyTurn();
       expect(sender).not.toHaveBeenCalled();
@@ -717,7 +669,7 @@ describe('MultiSigHandler', () => {
         vi.fn(),
         testPubs,
       );
-      await handler.addTx(reduced, requiredSings, boxes, dataBoxes);
+      await TestUtils.addTx(handler, reduced, requiredSings, boxes, dataBoxes);
       vi.setSystemTime(0);
       const sender = vi.fn();
       vi.spyOn(handler, 'sendMessage').mockImplementation(sender);
@@ -749,7 +701,7 @@ describe('MultiSigHandler', () => {
         vi.fn(),
         testPubs,
       );
-      await handler.addTx(reduced, requiredSings, boxes, dataBoxes);
+      await TestUtils.addTx(handler, reduced, requiredSings, boxes, dataBoxes);
       vi.setSystemTime(turnTime);
       const sender = vi.fn();
       vi.spyOn(handler, 'sendMessage').mockImplementation(sender);

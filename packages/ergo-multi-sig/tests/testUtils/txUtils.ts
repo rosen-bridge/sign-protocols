@@ -29,7 +29,7 @@ import { headers } from '../testData';
  * Converts a number to a BoxValue
  * @param val number to convert
  */
-function getBoxValue(val: any) {
+function getBoxValue(val: number) {
   return BoxValue.from_i64(I64.from_str(val.toString()));
 }
 
