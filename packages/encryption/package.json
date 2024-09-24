@@ -1,0 +1,36 @@
+{
+  "name": "@rosen-bridge/encryption",
+  "version": "0.1.0",
+  "description": "unify encryption interface",
+  "repository": "https://github.com/rosen-bridge/sign-protocols",
+  "license": "GPL-3.0",
+  "author": "Rosen Team",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc --build tsconfig.build.json",
+    "lint": "eslint --fix . && npm run prettify",
+    "prettify": "prettier --write . --ignore-path ./.gitignore",
+    "release": "npm run build && npm publish --access public",
+    "type-check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.9",
+    "@types/secp256k1": "^4.0.3",
+    "@typescript-eslint/eslint-plugin": "^6.19.1",
+    "@typescript-eslint/parser": "^6.19.1",
+    "eslint": "^8.56.0",
+    "eslint-config-prettier": "^9.1.0",
+    "prettier": "^3.2.4",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "@rosen-bridge/abstract-logger": "^1.0.0",
+    "blakejs": "^1.2.1",
+    "secp256k1": "^4.0.3"
+  },
+  "engines": {
+    "node": ">=20.11.0"
+  }
+}
