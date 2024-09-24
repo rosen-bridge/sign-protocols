@@ -96,7 +96,7 @@ export class MultiSigHandler {
   };
 
   /**
-   * begin sign a multi-sig transaction.
+   * begin to sign a multi-sig transaction.
    * @param tx: reduced transaction for multi-sig transaction
    * @param requiredSign: number of required signs
    * @param boxes: input boxes for transaction
