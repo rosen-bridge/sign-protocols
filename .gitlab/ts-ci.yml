@@ -2,6 +2,7 @@ image: node:20.11.0
 
 stages:
   - installation
+  - build
   - type_check
   - lint
   - test
@@ -18,6 +19,18 @@ installation:
       - '**/node_modules'
   script:
     - npm ci
+
+build:
+  stage: build
+  cache:
+    - key: ${CI_COMMIT_REF_NAME}-ts
+      policy: pull-push
+      paths:
+        - node_modules
+        - '**/node_modules'
+        - '**/dist'
+  script:
+    - npm run build
 
 type_check:
   stage: type_check
