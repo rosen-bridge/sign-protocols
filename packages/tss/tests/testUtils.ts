@@ -1,4 +1,4 @@
-import { EdDSA } from '../lib';
+import { EdDSA } from '@rosen-bridge/encryption';
 
 const generateSigners = async () => {
   const guardSigners: Array<EdDSA> = [];

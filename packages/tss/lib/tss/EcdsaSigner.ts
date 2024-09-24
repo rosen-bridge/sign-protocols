@@ -1,4 +1,4 @@
-import { ECDSA } from '../enc';
+import { ECDSA } from '@rosen-bridge/encryption';
 import { EcdsaConfig, Sign, SignResult } from '../types/signer';
 import { TssSigner } from './TssSigner';
 
