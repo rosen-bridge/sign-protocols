@@ -22,6 +22,7 @@ installation:
 
 build:
   stage: build
+  needs: ['installation']
   cache:
     - key: ${CI_COMMIT_REF_NAME}-ts
       policy: pull-push
@@ -30,11 +31,12 @@ build:
         - '**/node_modules'
         - '**/dist'
   script:
-    - npm run build
+    - npm run build --workspace packages
+
 
 type_check:
   stage: type_check
-  needs: ['installation']
+  needs: ['build']
   cache:
     key: ${CI_COMMIT_REF_NAME}-ts
     policy: pull
