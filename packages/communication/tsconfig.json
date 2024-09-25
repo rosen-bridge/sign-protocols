@@ -4,9 +4,5 @@
     "outDir": "./dist"
   },
   "include": ["tests", "lib", "vitest.config.ts"],
-  "references": [
-    { "path": "../encryption" },
-    { "path": "../communication" },
-    { "path": "../detection" }
-  ]
+  "references": [{ "path": "../encryption" }]
 }

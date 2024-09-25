@@ -1,4 +1,4 @@
-import { Communicator } from '../abstract';
+import { Communicator } from '@rosen-bridge/communication';
 import {
   Threshold,
   PendingSign,
@@ -11,7 +11,7 @@ import {
   StatusEnum,
   SignResult,
 } from '../types/signer';
-import { GuardDetection } from '../detection/GuardDetection';
+import { GuardDetection, ActiveGuard } from '@rosen-bridge/detection';
 import {
   defaultThresholdTTL,
   defaultTimeoutDefault,
@@ -25,7 +25,6 @@ import {
   startMessage,
   thresholdUrl,
 } from '../const/signer';
-import { ActiveGuard } from '../types/abstract';
 import { DummyLogger } from '@rosen-bridge/abstract-logger';
 import { Mutex } from 'await-semaphore';
 import axios, { AxiosInstance } from 'axios';

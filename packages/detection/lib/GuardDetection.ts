@@ -1,6 +1,7 @@
-import { Communicator } from '../abstract';
+import { Communicator } from '@rosen-bridge/communication';
 import { DummyLogger } from '@rosen-bridge/abstract-logger';
 import {
+  ActiveGuard,
   DetectionApprovePayload,
   GuardDetectionConfig,
   GuardInfo,
@@ -8,17 +9,16 @@ import {
   DetectionMessageType,
   Nonce,
   DetectionRegisterPayload,
-} from '../types/detection';
+} from './interfaces/types';
 import {
   guardHeartbeatTimeoutDefault,
   guardActiveTimeoutDefault,
-} from '../const/const';
+} from './const/const';
 import {
   approveMessage,
   heartbeatMessage,
   registerMessage,
-} from '../const/detection';
-import { ActiveGuard } from '../types/abstract';
+} from './const/detection';
 
 export class GuardDetection extends Communicator {
   protected guardsInfo: Array<GuardInfo> = [];

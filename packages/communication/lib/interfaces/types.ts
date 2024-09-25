@@ -6,8 +6,3 @@ export interface CommunicationMessage {
   payload: JSON;
   index: number;
 }
-
-export interface ActiveGuard {
-  peerId: string;
-  publicKey: string;
-}

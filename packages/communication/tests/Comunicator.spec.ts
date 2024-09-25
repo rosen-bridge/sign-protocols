@@ -1,5 +1,5 @@
-import { EdDSA } from '../../lib';
 import { TestCommunicator } from './TestCommunicator';
+import { EdDSA } from '@rosen-bridge/encryption';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 describe('Communicator', () => {
