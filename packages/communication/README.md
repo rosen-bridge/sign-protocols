@@ -1,4 +1,4 @@
-# @rosen-bridge/detection
+# @rosen-bridge/communication
 
 ## Table of contents
 
@@ -14,11 +14,11 @@ Abstractly manage communication between endpoints
 npm:
 
 ```sh
-npm i @rosen-bridge/detection
+npm i @rosen-bridge/communication
 ```
 
 yarn:
 
 ```sh
-yarn add @rosen-bridge/detection
+yarn add @rosen-bridge/communication
 ```

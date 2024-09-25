@@ -1,4 +1,4 @@
-# @rosen-bridge/detection
+# @rosen-bridge/encryption
 
 ## Table of contents
 
@@ -14,11 +14,11 @@ unify encryption interface
 npm:
 
 ```sh
-npm i @rosen-bridge/detection
+npm i @rosen-bridge/encryption
 ```
 
 yarn:
 
 ```sh
-yarn add @rosen-bridge/detection
+yarn add @rosen-bridge/encryption
 ```
