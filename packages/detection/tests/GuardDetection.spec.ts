@@ -1,12 +1,13 @@
 import { TestGuardDetection } from './TestGuardDetection';
-import { EdDSA, Nonce } from '../../lib';
+import { EdDSA } from '@rosen-bridge/encryption';
 import {
   approveMessage,
   heartbeatMessage,
   registerMessage,
-} from '../../lib/const/detection';
-import { generateSigners } from '../testUtils';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+} from '../lib/const/detection';
+import { Nonce } from '../lib';
+import { generateSigners } from './testUtils';
+import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 describe('GuardDetection', () => {
   let detection: TestGuardDetection;

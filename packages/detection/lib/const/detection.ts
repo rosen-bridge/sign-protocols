@@ -1,4 +1,4 @@
-import { DetectionMessageType } from '../types/detection';
+import { DetectionMessageType } from '../interfaces/types';
 
 const approveMessage: DetectionMessageType = 'approval';
 const heartbeatMessage: DetectionMessageType = 'heartbeat';

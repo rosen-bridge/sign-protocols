@@ -1,5 +1,4 @@
 import {
-  ActiveGuard,
   PendingSign,
   Sign,
   SignApprovePayload,
@@ -8,6 +7,7 @@ import {
   SignStartPayload,
   TssSigner,
 } from '../../lib';
+import { ActiveGuard } from '@rosen-bridge/detection';
 
 export class TestTssSigner extends TssSigner {
   /**

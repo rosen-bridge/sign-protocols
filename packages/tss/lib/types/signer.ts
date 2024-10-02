@@ -1,7 +1,6 @@
-import { EncryptionHandler } from '../abstract';
+import { EncryptionHandler } from '@rosen-bridge/encryption';
 import { AbstractLogger } from '@rosen-bridge/abstract-logger';
-import { GuardDetection } from '../detection/GuardDetection';
-import { ActiveGuard } from './abstract';
+import { GuardDetection, ActiveGuard } from '@rosen-bridge/detection';
 
 export interface SignerBaseConfig {
   logger?: AbstractLogger;

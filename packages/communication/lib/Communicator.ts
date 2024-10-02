@@ -1,7 +1,7 @@
 import { AbstractLogger } from '@rosen-bridge/abstract-logger';
-import { EncryptionHandler } from './EncryptionHandler';
-import { CommunicationMessage } from '../types/abstract';
-import { guardMessageValidTimeoutDefault } from '../const/const';
+import { EncryptionHandler } from '@rosen-bridge/encryption';
+import { CommunicationMessage } from './interfaces/types';
+import { guardMessageValidTimeoutDefault } from './const/const';
 
 export abstract class Communicator {
   protected logger: AbstractLogger;

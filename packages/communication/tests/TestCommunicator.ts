@@ -1,4 +1,5 @@
-import { Communicator, EncryptionHandler } from '../../lib';
+import { Communicator } from '../lib';
+import { EncryptionHandler } from '@rosen-bridge/encryption';
 import { DummyLogger } from '@rosen-bridge/abstract-logger';
 import { vi } from 'vitest';
 

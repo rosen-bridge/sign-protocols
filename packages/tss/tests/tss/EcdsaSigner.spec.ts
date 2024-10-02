@@ -1,4 +1,6 @@
-import { ECDSA, EcdsaSigner, GuardDetection } from '../../lib';
+import { EcdsaSigner } from '../../lib';
+import { GuardDetection } from '@rosen-bridge/detection';
+import { ECDSA } from '@rosen-bridge/encryption';
 import { describe, expect, it, vi } from 'vitest';
 
 describe('EcdsaSigner', () => {

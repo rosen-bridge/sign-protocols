@@ -6,7 +6,6 @@
   "exclude": ["tests", "vitest.config.ts"],
   "references": [
     { "path": "../encryption/tsconfig.build.json" },
-    { "path": "../communication/tsconfig.build.json" },
-    { "path": "../detection/tsconfig.build.json" }
+    { "path": "../communication/tsconfig.build.json" }
   ]
 }

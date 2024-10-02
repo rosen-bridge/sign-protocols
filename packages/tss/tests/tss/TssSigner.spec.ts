@@ -1,10 +1,6 @@
-import {
-  ActiveGuard,
-  EdDSA,
-  GuardDetection,
-  SignRequestPayload,
-  StatusEnum,
-} from '../../lib';
+import { SignRequestPayload, StatusEnum } from '../../lib';
+import { GuardDetection, ActiveGuard } from '@rosen-bridge/detection';
+import { EdDSA } from '@rosen-bridge/encryption';
 import { TestTssSigner } from './TestTssSigner';
 import { generateSigners } from '../testUtils';
 import {

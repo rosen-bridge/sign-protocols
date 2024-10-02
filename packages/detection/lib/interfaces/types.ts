@@ -1,6 +1,11 @@
 import { AbstractLogger } from '@rosen-bridge/abstract-logger';
-import { EncryptionHandler } from '../abstract';
+import { EncryptionHandler } from '@rosen-bridge/encryption';
 import { randomBytes } from '@noble/hashes/utils';
+
+export interface ActiveGuard {
+  peerId: string;
+  publicKey: string;
+}
 
 export interface GuardDetectionConfig {
   logger?: AbstractLogger;
