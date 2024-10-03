@@ -1,15 +1,12 @@
-import { CommitmentPayload, MultiSigUtils } from '../lib';
-import { describe, expect, it, vi } from 'vitest';
-import TestUtils from './testUtils/TestUtils';
-import { boxJs, testCmt, testPubs, testSecrets } from './testData';
-import { turnTime } from '../lib/const';
+import { MultiSigUtils } from '../lib';
+import { describe, expect, it } from 'vitest';
+import { boxJs } from './testData';
 import {
   getChangeBoxJs,
   getOutBoxJs,
   jsToReducedTx,
 } from './testUtils/txUtils';
 import { ErgoBox } from 'ergo-lib-wasm-nodejs';
-import { SenderSimulated } from './testUtils/SenderSimulated';
 
 const fee = 1000000;
 const tree =

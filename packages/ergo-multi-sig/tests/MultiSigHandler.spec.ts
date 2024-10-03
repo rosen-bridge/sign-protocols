@@ -1,4 +1,4 @@
-import { CommitmentPayload, MultiSigUtils } from '../lib';
+import { CommitmentPayload } from '../lib';
 import { describe, expect, it, vi } from 'vitest';
 import TestUtils from './testUtils/TestUtils';
 import { boxJs, testCmt, testPubs, testSecrets } from './testData';

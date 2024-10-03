@@ -2,7 +2,6 @@ import { randomBytes } from 'crypto';
 import { MultiSigHandler, MultiSigUtils } from '../../lib';
 import { mockedErgoStateContext, testPubs, testSecrets } from '../testData';
 import TestConfigs from './TestConfigs';
-import Encryption from '../../lib/utils/Encryption';
 import * as wasm from 'ergo-lib-wasm-nodejs';
 import { GuardDetection } from '@rosen-bridge/detection';
 import { ECDSA } from '@rosen-bridge/encryption';
