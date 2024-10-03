@@ -1,24 +1,21 @@
 import * as wasm from 'ergo-lib-wasm-nodejs';
 import {
-  ApprovePayload,
   CommitmentPayload,
   CommunicationMessage,
   ErgoMultiSigConfig,
   GenerateCommitmentPayload,
   InitiateSignPayload,
-  RegisterPayload,
   SignedTxPayload,
   Signer,
   SignPayload,
   TxQueued,
 } from './types';
-import { multiSigFirstSignDelay, turnTime } from './const';
-import * as crypto from 'crypto';
+import { turnTime } from './const';
 import { Semaphore } from 'await-semaphore';
 import Encryption from './utils/Encryption';
 import { MultiSigUtils } from './MultiSigUtils';
 import { AbstractLogger, DummyLogger } from '@rosen-bridge/abstract-logger';
-import { filter } from 'lodash-es';
+import { ActiveGuard, GuardDetection } from '@rosen-bridge/detection';
 
 export class MultiSigHandler {
   protected logger: AbstractLogger;
@@ -27,39 +24,67 @@ export class MultiSigHandler {
     peers: Array<string>,
   ) => unknown;
   private readonly getPeerId: () => Promise<string>;
+  private readonly getPeerPks: () => string[];
   private readonly multiSigUtilsInstance: MultiSigUtils;
   private readonly transactions: Map<string, TxQueued>;
-  private peers: Array<Signer>;
   private readonly secret: Uint8Array;
-  private nonce?: string;
   private readonly txSignTimeout: number;
-  private readonly multiSigFirstSignDelay: number;
   private prover?: wasm.Wallet;
   private index?: number;
   private semaphore = new Semaphore(1);
+  private guardDetection: GuardDetection;
 
   constructor(config: ErgoMultiSigConfig) {
     this.logger = config.logger ? config.logger : new DummyLogger();
     this.transactions = new Map<string, TxQueued>();
-    this.peers = config.publicKeys.map((item) => ({
-      pub: item,
-      unapproved: [],
-    }));
     this.secret = Buffer.from(config.secretHex, 'hex');
     this.txSignTimeout = config.txSignTimeout;
-    this.multiSigFirstSignDelay =
-      config.multiSigFirstSignDelay ?? multiSigFirstSignDelay;
     this.multiSigUtilsInstance = config.multiSigUtilsInstance;
     this.submitMessage = config.submit;
     this.getPeerId = config.getPeerId;
+    this.getPeerPks = config.getPeerPks;
+    this.guardDetection = config.guardDetection;
   }
+
+  /**
+   * getting all peers without initializing IDs
+   */
+  peers = (): Signer[] => {
+    return this.getPeerPks().map((pub) => ({ pub }));
+  };
+
+  /**
+   * getting all peers with their IDs (if they are active, otherwise undefined)
+   */
+  peersWithIds = async (): Promise<Signer[]> => {
+    const activeGuards = await this.guardDetection.activeGuards();
+    return this.getPeerPks().map((pub) => {
+      const guard = activeGuards.find((guard) => guard.publicKey === pub);
+      return { pub, id: guard?.peerId };
+    });
+  };
 
   /**
    * getting the current turn index
    */
   public getCurrentTurnInd = (): number => {
     // every turnTime the turn changes to the next guard
-    return Math.floor(new Date().getTime() / turnTime) % this.peers.length;
+    return Math.floor(new Date().getTime() / turnTime) % this.peers().length;
+  };
+
+  /**
+   * getting id for the guard with the current turn, undefined if not active
+   */
+  public getCurrentTurnId = async (): Promise<string | undefined> => {
+    try {
+      const activeGuards = await this.guardDetection.activeGuards();
+      const currentTurnPk = this.peers()[this.getCurrentTurnInd()].pub;
+      return activeGuards.filter(
+        (guard: ActiveGuard) => guard.publicKey === currentTurnPk,
+      )[0].peerId;
+    } catch (e) {
+      return undefined;
+    }
   };
 
   /**
@@ -73,7 +98,7 @@ export class MultiSigHandler {
    * checks if peers initiated using guards public keys, throws error if not
    */
   peersMustBeInitialized = (): void => {
-    if (this.peers.length === 0)
+    if (this.peers().length === 0)
       throw Error(
         `Cannot proceed MultiSig action, public keys are not provided yet`,
       );
@@ -88,23 +113,19 @@ export class MultiSigHandler {
       const pub = Buffer.from(secret.get_address().content_bytes()).toString(
         'hex',
       );
-      this.index = this.peers.map((peer) => peer.pub).indexOf(pub);
+      this.index = this.peers()
+        .map((peer) => peer.pub)
+        .indexOf(pub);
     }
     if (this.index !== undefined) return this.index;
     throw Error('Secret key does not match with any guard public keys');
   };
 
   /**
-   * set peer id for the guard
-   * @param index index of the guard
-   * @param peerId peer id to set
+   * getting this guard's public key
    */
-  setPeerId = async (index: number, peerId: string) => {
-    if (index >= 0 && index < this.peers.length) {
-      this.peers[index].id = peerId;
-    } else {
-      throw Error(`Invalid index [${index}]`);
-    }
+  getPk = (): string => {
+    return this.peers()[this.getIndex()].pub;
   };
 
   /**
@@ -217,7 +238,7 @@ export class MultiSigHandler {
    * @param index
    */
   verifyIndex = (index: number): boolean => {
-    return index >= 0 && index < this.peers.length;
+    return index >= 0 && index < this.peers().length;
   };
 
   /**
@@ -226,7 +247,7 @@ export class MultiSigHandler {
    */
   generateCommitment = async (txId: string): Promise<void> => {
     const currentTurn = this.getCurrentTurnInd();
-    const currentTurnId = this.peers[currentTurn].id;
+    const currentTurnId = await this.getCurrentTurnId();
     if (currentTurnId === undefined) {
       this.logger.debug(
         `Cannot generate and send commitment for tx [${txId}] because the peer with the correct turn is not initialized yet.`,
@@ -244,13 +265,10 @@ export class MultiSigHandler {
         );
 
       // publishable commitment
-      transaction.commitments[this.peers[this.getIndex()].pub] =
-        MultiSigUtils.toReducedPublishedCommitments(
-          transaction.secret,
-          this.peers[this.getIndex()].pub,
-        );
+      const myPub = this.getPk();
+      transaction.commitments[myPub] =
+        MultiSigUtils.toReducedPublishedCommitments(transaction.secret, myPub);
 
-      const myPub = this.peers[this.getIndex()].pub;
       const publishCommitments = MultiSigUtils.toReducedPublishedCommitments(
         transaction.secret,
         myPub,
@@ -294,7 +312,7 @@ export class MultiSigHandler {
 
     if (payload.index !== undefined && payload.txId) {
       const index = payload.index;
-      const pub = this.peers[index].pub;
+      const pub = this.peers()[index].pub;
       const { transaction, release } = await this.getQueuedTransaction(
         payload.txId,
       );
@@ -314,7 +332,7 @@ export class MultiSigHandler {
           transaction.commitments[pub] = payload.commitment;
           transaction.commitmentSigns[pub] = signature;
 
-          const myPub = this.peers[this.getIndex()].pub;
+          const myPub = this.getPk();
 
           if (
             Object.keys(transaction.commitments).length >=
@@ -324,9 +342,11 @@ export class MultiSigHandler {
 
             const willSignPubs = Object.keys(transaction.commitments);
             const willSignInds = willSignPubs.map((pub) =>
-              this.peers.map((peer) => peer.pub).indexOf(pub),
+              this.peers()
+                .map((peer) => peer.pub)
+                .indexOf(pub),
             );
-            const simulated = this.peers
+            const simulated = this.peers()
               .filter((peer) => !willSignPubs.includes(peer.pub))
               .map((peer) => peer.pub);
 
@@ -372,7 +392,7 @@ export class MultiSigHandler {
               signedTx,
               transaction.boxes,
               transaction.dataBoxes,
-              [this.peers[this.getIndex()].pub],
+              [myPub],
               [],
             );
             transaction.signs[myPub] = MultiSigUtils.hintBagToPublishedProof(
@@ -388,7 +408,7 @@ export class MultiSigHandler {
               simulatedProofs: simPublishedProofs,
             };
 
-            const toSendPeers: string[] = this.peers
+            const toSendPeers: string[] = (await this.peersWithIds())
               .filter((peer) => {
                 return Object.keys(transaction.commitments).includes(peer.pub);
               })
@@ -448,9 +468,9 @@ export class MultiSigHandler {
         release();
         return;
       }
-      const myPub = this.peers[this.getIndex()].pub;
-      const signed = payload.committedInds.map((ind) => this.peers[ind].pub);
-      const simulated = this.peers
+      const myPub = this.getPk();
+      const signed = payload.committedInds.map((ind) => this.peers()[ind].pub);
+      const simulated = this.peers()
         .filter((peer) => !signed.includes(peer.pub))
         .map((peer) => peer.pub);
 
@@ -484,7 +504,7 @@ export class MultiSigHandler {
         transaction.tx,
         hints,
       );
-      const signer = [this.peers[this.getIndex()].pub];
+      const signer = [myPub];
       const myHints = await this.multiSigUtilsInstance.extract_hints(
         partial,
         transaction.boxes,
@@ -578,8 +598,8 @@ export class MultiSigHandler {
         const txPayload = {
           txBytes: txBytes,
         };
-        const myPub = this.peers[this.getIndex()].pub;
-        const toSend: string[] = this.peers
+        const myPub = this.getPk();
+        const toSend: string[] = (await this.peersWithIds())
           .filter((peer) => peer.pub !== myPub)
           .map((peer) => peer.id)
           .filter((id): id is string => id !== undefined);
@@ -630,17 +650,6 @@ export class MultiSigHandler {
         `An unknown exception occurred while handling signed transaction: ${e}`,
       );
     }
-  };
-
-  /**
-   * Apply required changes after changes in public keys
-   * @param publicKeys new public keys
-   */
-  handlePublicKeysChange = async (publicKeys: string[]) => {
-    this.peers = publicKeys.map((publicKey) => ({
-      pub: publicKey,
-      unapproved: [],
-    }));
   };
 
   /**
@@ -742,7 +751,7 @@ export class MultiSigHandler {
     if (
       message.payload.index !== undefined &&
       message.payload.index >= 0 &&
-      message.payload.index < this.peers.length &&
+      message.payload.index < this.peers().length &&
       message.payload.id &&
       message.sign
     ) {
@@ -757,7 +766,7 @@ export class MultiSigHandler {
       if (
         MultiSigUtils.verifySignature(
           message.sign,
-          this.peers[index].pub,
+          this.peers()[index].pub,
           JSON.stringify(message.payload),
         )
       ) {

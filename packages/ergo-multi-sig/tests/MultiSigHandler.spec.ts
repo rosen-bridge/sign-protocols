@@ -22,15 +22,87 @@ const reduced = jsToReducedTx(ins, [out, change], dataBoxes, 1311604, fee);
 const requiredSings = 6;
 const boxes = ins.map((i: any) => ErgoBox.from_json(JSON.stringify(i)));
 
-const senderMock = (expectedType: string, expectedPayload: any) => {
-  return async (msg: string, peers: string[]) => {
-    const msgJson = JSON.parse(msg);
-    expect(msgJson.type).toEqual(expectedType);
-    expect(msgJson.payload).toEqual(expectedPayload);
-  };
-};
-
 describe('MultiSigHandler', () => {
+  describe('peers', () => {
+    /**
+     * @target MultiSigHandler.peers should return pks without IDs
+     * @dependencies MultiSigHandlerInstance
+     * @scenario
+     * - Generate a MultiSigHandler instance
+     * - Call peers
+     * @expected
+     * - returned value should be pks without IDs
+     * - returned value length should be equal to the testPubs length
+     * - returned value should not have IDs
+     */
+    it('should return pks without IDs', async () => {
+      const sender = vi.fn();
+      const handler = await TestUtils.generateMultiSigHandlerInstance(
+        testSecrets[0],
+        sender,
+        testPubs,
+      );
+      handler.peers().forEach((peer) => {
+        expect(peer.id).toBeUndefined();
+      });
+      expect(handler.peers().length).toEqual(testPubs.length);
+    });
+  });
+
+  describe('peersWithIds', () => {
+    /**
+     * @target MultiSigHandler.peersWithIds should return pks with IDs
+     * @dependencies MultiSigHandlerInstance
+     * @scenario
+     * - Generate a MultiSigHandler instance
+     * - Call peersWithIds
+     * @expected
+     * - returned value should be pks with IDs
+     * - returned value length should be equal to the testPubs length
+     */
+    it('should return pks with IDs', async () => {
+      const sender = vi.fn();
+      const handler = await TestUtils.generateMultiSigHandlerInstance(
+        testSecrets[0],
+        sender,
+        testPubs,
+      );
+      (await handler.peersWithIds()).forEach((peer) => {
+        expect(peer.id).toBeDefined();
+      });
+      expect(handler.peers().length).toEqual(testPubs.length);
+    });
+  });
+
+  describe('getCurrentTurnId', () => {
+    /**
+     * @target MultiSigHandler.getCurrentTurnId should return ID for the guard with the current turn
+     * @dependencies
+     * @scenario
+     * - mock `setSystemTime`
+     * - run test
+     * - check returned value
+     * @expected
+     * - returned value should be ID for the guard with the current turn
+     */
+    it('should return ID for the guard with the current turn', async () => {
+      const sender = vi.fn();
+      const handler = await TestUtils.generateMultiSigHandlerInstance(
+        testSecrets[0],
+        sender,
+        testPubs,
+      );
+      vi.setSystemTime(0);
+      const turnInd = handler.getCurrentTurnInd();
+      const id = await handler.getCurrentTurnId();
+      expect(id).toEqual(testPubs[turnInd]);
+      vi.setSystemTime(turnTime);
+      const turnInd2 = handler.getCurrentTurnInd();
+      const id2 = await handler.getCurrentTurnId();
+      expect(id2).toEqual(testPubs[turnInd2]);
+    });
+  });
+
   describe('getCurrentTurnInd', () => {
     /**
      * @target MultiSigHandler.getCurrentTurnInd should return current turn index
@@ -110,45 +182,6 @@ describe('MultiSigHandler', () => {
         );
         expect(handler.getIndex()).to.equal(i);
       }
-    });
-  });
-
-  describe('handlePublicKeysChange', () => {
-    /**
-     * @target MultiSigHandler.handlePublicKeysChange should update peers
-     * and send register message
-     * @dependencies
-     * @scenario
-     * - mock `sendRegister`
-     * - run test
-     * - check if new index is verified
-     * - check if function got called
-     * @expected
-     * - index 6 should get verified
-     * - `sendRegister` should got called
-     */
-    it('should update peers and send register message', async () => {
-      // mock `sendRegister`
-      const handler = await TestUtils.generateMultiSigHandlerInstance(
-        testSecrets[0],
-        vi.fn(),
-        testPubs,
-      );
-      const mockedSendRegister = vi.fn();
-
-      const updatedPublicKeys = [
-        '028d938d67befbb8ab3513c44886c16c2bcd62ed4595b9b216b20ef03eb8fb8fb1',
-        '028d938d67befbb8ab3513c44886c16c2bcd62ed4595b9b216b20ef03eb8fb8fb2',
-        '028d938d67befbb8ab3513c44886c16c2bcd62ed4595b9b216b20ef03eb8fb8fb3',
-        '028d938d67befbb8ab3513c44886c16c2bcd62ed4595b9b216b20ef03eb8fb8fb4',
-        '028d938d67befbb8ab3513c44886c16c2bcd62ed4595b9b216b20ef03eb8fb8fb5',
-        '028d938d67befbb8ab3513c44886c16c2bcd62ed4595b9b216b20ef03eb8fb8fb6',
-        '028d938d67befbb8ab3513c44886c16c2bcd62ed4595b9b216b20ef03eb8fb8fb7',
-      ];
-
-      await handler.handlePublicKeysChange(updatedPublicKeys);
-      // check if new index is verified
-      expect(handler.verifyIndex(6)).toEqual(true);
     });
   });
 
@@ -318,9 +351,6 @@ describe('MultiSigHandler', () => {
         testPubs,
       );
       await TestUtils.addTx(handler, reduced, requiredSings, boxes, dataBoxes);
-      for (let i = 0; i < testPubs.length; i++) {
-        await handler.setPeerId(i, testPubs[i]);
-      }
       handler.generateCommitment(reduced.unsigned_tx().id().to_str());
       const { transaction, release } = await handler.getQueuedTransaction(
         reduced.unsigned_tx().id().to_str(),
@@ -372,9 +402,6 @@ describe('MultiSigHandler', () => {
         vi.fn(),
         testPubs,
       );
-      for (let i = 0; i < testPubs.length; i++) {
-        await handler.setPeerId(i, testPubs[i]);
-      }
       const mockedSendMessage = vi.fn();
       vi.spyOn(handler, 'sendMessage').mockImplementation(mockedSendMessage);
       await TestUtils.addTx(handler, reduced, requiredSings, boxes, dataBoxes);
@@ -438,9 +465,6 @@ describe('MultiSigHandler', () => {
         vi.fn(),
         testPubs,
       );
-      for (let i = 0; i < testPubs.length; i++) {
-        await handler.setPeerId(i, testPubs[i]);
-      }
       const mockedSendMessage = vi.fn();
       vi.spyOn(handler, 'sendMessage').mockImplementation(mockedSendMessage);
       await TestUtils.addTx(handler, reduced, requiredSings, boxes, dataBoxes);
@@ -486,10 +510,6 @@ describe('MultiSigHandler', () => {
       vi.setSystemTime(0);
       await Promise.all(
         handlers.map((handler) => {
-          handler.handlePublicKeysChange(testPubs);
-          for (let i = 0; i < testPubs.length; i++) {
-            handler.setPeerId(i, testPubs[i]);
-          }
           return TestUtils.addTx(
             handler,
             reduced,
@@ -541,10 +561,6 @@ describe('MultiSigHandler', () => {
       vi.setSystemTime(0);
       await Promise.all(
         handlers.map((handler) => {
-          handler.handlePublicKeysChange(testPubs);
-          for (let i = 0; i < testPubs.length; i++) {
-            handler.setPeerId(i, testPubs[i]);
-          }
           return TestUtils.addTx(
             handler,
             reduced,

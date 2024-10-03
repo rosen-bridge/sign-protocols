@@ -4,6 +4,8 @@ import { mockedErgoStateContext, testPubs, testSecrets } from '../testData';
 import TestConfigs from './TestConfigs';
 import Encryption from '../../lib/utils/Encryption';
 import * as wasm from 'ergo-lib-wasm-nodejs';
+import { GuardDetection } from '@rosen-bridge/detection';
+import { ECDSA } from '@rosen-bridge/encryption';
 
 class TestUtils {
   /**
@@ -27,16 +29,29 @@ class TestUtils {
     });
     const pubKeys = pks ? pks : testPubs;
     const secretInd = testSecrets.indexOf(secret);
-    const handler = new MultiSigHandler({
+    const ecdsaSigner = new ECDSA(testSecrets[secretInd]);
+    const guardDetection = new GuardDetection({
+      guardsPublicKey: pubKeys,
+      signer: ecdsaSigner,
+      submit: submit,
+      getPeerId: () => Promise.resolve(testPubs[secretInd]),
+    });
+    guardDetection.activeGuards = async () => {
+      return pubKeys.map((pk) => {
+        return { peerId: pk, publicKey: pk };
+      });
+    };
+
+    return new MultiSigHandler({
       multiSigUtilsInstance: multiSigUtilsInstance,
-      publicKeys: pubKeys,
       secretHex: secret,
       txSignTimeout: TestConfigs.txSignTimeout,
       multiSigFirstSignDelay: TestConfigs.multiSigFirstSignDelay,
       submit: submit,
       getPeerId: () => Promise.resolve(testPubs[secretInd]),
+      guardDetection: guardDetection,
+      getPeerPks: () => pubKeys,
     });
-    return handler;
   };
 
   /**

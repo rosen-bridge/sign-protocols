@@ -1,6 +1,7 @@
 import * as wasm from 'ergo-lib-wasm-nodejs';
 import { AbstractLogger } from '@rosen-bridge/abstract-logger';
 import { MultiSigUtils } from './MultiSigUtils';
+import { GuardDetection } from '@rosen-bridge/detection';
 
 interface ApproveSigner {
   id: string;
@@ -10,7 +11,6 @@ interface ApproveSigner {
 interface Signer {
   id?: string;
   pub: string;
-  unapproved: Array<ApproveSigner>;
 }
 
 interface SingleCommitmentJson {
@@ -142,12 +142,13 @@ interface CommunicationMessage {
 interface ErgoMultiSigConfig {
   logger?: AbstractLogger;
   multiSigUtilsInstance: MultiSigUtils;
-  publicKeys: Array<string>;
   secretHex: string;
   txSignTimeout: number;
   multiSigFirstSignDelay?: number;
   submit: (msg: string, peers: Array<string>) => unknown;
+  guardDetection: GuardDetection;
   getPeerId: () => Promise<string>;
+  getPeerPks: () => string[];
 }
 
 export {
