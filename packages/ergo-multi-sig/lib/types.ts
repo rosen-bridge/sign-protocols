@@ -126,15 +126,18 @@ type Payload =
   | SignedTxPayload
   | GenerateCommitmentPayload;
 
+// Add this enum to the file
+export enum MessageType {
+  GenerateCommitment = 'generateCommitment',
+  Commitment = 'commitment',
+  InitiateSign = 'initiateSign',
+  Sign = 'sign',
+  SignedTx = 'signedTx',
+}
+
+// Update the CommunicationMessage interface to use the new enum
 interface CommunicationMessage {
-  type:
-    | 'register'
-    | 'approve'
-    | 'commitment'
-    | 'sign'
-    | 'initiateSign'
-    | 'signedTx'
-    | 'generateCommitment';
+  type: MessageType;
   sign?: string;
   payload: Payload;
 }

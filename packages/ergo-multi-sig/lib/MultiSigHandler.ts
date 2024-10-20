@@ -9,6 +9,7 @@ import {
   Signer,
   SignPayload,
   TxQueued,
+  MessageType,
 } from './types';
 import { turnTime } from './const';
 import { Semaphore } from 'await-semaphore';
@@ -33,6 +34,7 @@ export class MultiSigHandler {
   private index?: number;
   private semaphore = new Semaphore(1);
   private guardDetection: GuardDetection;
+  private publicKey?: string;
 
   constructor(config: ErgoMultiSigConfig) {
     this.logger = config.logger ? config.logger : new DummyLogger();
@@ -125,7 +127,13 @@ export class MultiSigHandler {
    * getting this guard's public key
    */
   getPk = (): string => {
-    return this.peers()[this.getIndex()].pub;
+    if (!this.publicKey) {
+      const secret = wasm.SecretKey.dlog_from_bytes(this.secret);
+      this.publicKey = Buffer.from(
+        secret.get_address().content_bytes(),
+      ).toString('hex');
+    }
+    return this.publicKey;
   };
 
   /**
@@ -209,11 +217,7 @@ export class MultiSigHandler {
       Encryption.sign(payloadStr, Buffer.from(this.secret)),
     ).toString('base64');
     if (receivers && receivers.length) {
-      await Promise.all(
-        receivers.map(async (receiver) =>
-          this.submitMessage(JSON.stringify(message), [receiver]),
-        ),
-      );
+      await this.submitMessage(JSON.stringify(message), receivers);
     } else {
       this.submitMessage(JSON.stringify(message), []);
     }
@@ -231,14 +235,6 @@ export class MultiSigHandler {
     }
     if (this.prover) return this.prover;
     throw Error('Cannot create prover in MultiSig');
-  };
-
-  /**
-   * checks index of the tx is valid
-   * @param index
-   */
-  verifyIndex = (index: number): boolean => {
-    return index >= 0 && index < this.peers().length;
   };
 
   /**
@@ -280,7 +276,7 @@ export class MultiSigHandler {
       if (!this.isMyTurn())
         await this.sendMessage(
           {
-            type: 'commitment',
+            type: MessageType.Commitment,
             payload: {
               txId: txId,
               commitment: publishCommitments,
@@ -421,7 +417,11 @@ export class MultiSigHandler {
 
             release();
             await this.sendMessage(
-              { type: 'initiateSign', payload: signPayload, sign: '' },
+              {
+                type: MessageType.InitiateSign,
+                payload: signPayload,
+                sign: '',
+              },
               toSendPeers,
             );
           }
@@ -520,9 +520,10 @@ export class MultiSigHandler {
       };
 
       release();
-      await this.sendMessage({ type: 'sign', payload: signPayload, sign: '' }, [
-        sender,
-      ]);
+      await this.sendMessage(
+        { type: MessageType.Sign, payload: signPayload, sign: '' },
+        [sender],
+      );
     } catch (e) {
       this.logger.warn(
         `An unknown exception occurred while handling initiate sign from other peer: ${e}`,
@@ -605,7 +606,7 @@ export class MultiSigHandler {
           .filter((id): id is string => id !== undefined);
 
         await this.sendMessage(
-          { type: 'signedTx', payload: txPayload, sign: '' },
+          { type: MessageType.SignedTx, payload: txPayload, sign: '' },
           toSend,
         );
       }
@@ -674,7 +675,7 @@ export class MultiSigHandler {
       await this.generateCommitment(txId);
       //   ask peers to generate commitment
       await this.sendMessage({
-        type: 'generateCommitment',
+        type: MessageType.GenerateCommitment,
         payload: {
           txId: txId,
         },
@@ -771,30 +772,28 @@ export class MultiSigHandler {
         )
       ) {
         switch (message.type) {
-          case 'generateCommitment': {
+          case MessageType.GenerateCommitment: {
             const payload = message.payload as GenerateCommitmentPayload;
             await this.generateCommitment(payload.txId);
             break;
           }
-          case 'commitment':
+          case MessageType.Commitment:
             await this.handleCommitment(
               sender,
               message.payload as CommitmentPayload,
               message.sign,
             );
             break;
-          case 'initiateSign':
+          case MessageType.InitiateSign:
             await this.initiateSign(
               sender,
               message.payload as InitiateSignPayload,
             );
             break;
-
-          case 'sign':
+          case MessageType.Sign:
             await this.handleSign(sender, message.payload as SignPayload);
             break;
-
-          case 'signedTx': {
+          case MessageType.SignedTx: {
             const payload = message.payload as SignedTxPayload;
             await this.handleSignedTx(payload.txBytes);
             break;
