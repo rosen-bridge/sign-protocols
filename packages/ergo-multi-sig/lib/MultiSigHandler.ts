@@ -544,7 +544,8 @@ export class MultiSigHandler {
       );
       if (
         transaction.tx === undefined ||
-        transaction.simulatedBag === undefined
+        transaction.simulatedBag === undefined ||
+        payload.index === undefined
       ) {
         this.logger.debug(
           `Received proof from [${sender}] for tx [${payload.txId}] but the transaction is not properly in the queue yet.`,
@@ -555,7 +556,9 @@ export class MultiSigHandler {
       this.logger.debug(
         `Received proof from [${sender}] for tx [${payload.txId}]...`,
       );
-      transaction.signs[sender] = payload.proof;
+      const index = payload.index;
+      const pub = this.peers()[index].pub;
+      transaction.signs[pub] = payload.proof;
 
       if (Object.keys(transaction.signs).length >= transaction.requiredSigner) {
         this.logger.debug(
