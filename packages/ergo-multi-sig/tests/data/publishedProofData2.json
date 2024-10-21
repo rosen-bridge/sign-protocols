@@ -1,0 +1,41 @@
+{
+  "proof": {
+    "0": [
+      {
+        "proof": "b9da04711283623e3a0f3cf89ba13931b9a3627d5dc95230cc5b8b40523deec45dd91097cd356dda32a1be08c842aaf00e426b4bf1589815",
+        "position": "0-4"
+      }
+    ]
+  },
+  "hints": {
+    "secretHints": {
+      "0": [
+        {
+          "hint": "proofReal",
+          "pubkey": {
+            "op": "205",
+            "h": "032282bafc78f565307794abb1ca4e8e7beb30aab5b8b9d0b1c8d8ea7a74e60a80"
+          },
+          "challenge": "b9da04711283623e3a0f3cf89ba13931b9a3627d5dc95230",
+          "proof": "b9da04711283623e3a0f3cf89ba13931b9a3627d5dc95230cc5b8b40523deec45dd91097cd356dda32a1be08c842aaf00e426b4bf1589815",
+          "position": "0-4"
+        }
+      ]
+    },
+    "publicHints": {
+      "0": [
+        {
+          "hint": "cmtReal",
+          "pubkey": {
+            "op": "205",
+            "h": "032282bafc78f565307794abb1ca4e8e7beb30aab5b8b9d0b1c8d8ea7a74e60a80"
+          },
+          "type": "dlog",
+          "a": "037c7eb78223916951187c38d04e560159cef94c1bf252a4cf554975427a474db9",
+          "position": "0-4"
+        }
+      ]
+    }
+  },
+  "pub": "032282bafc78f565307794abb1ca4e8e7beb30aab5b8b9d0b1c8d8ea7a74e60a80"
+}

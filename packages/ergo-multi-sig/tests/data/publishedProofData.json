@@ -1,0 +1,201 @@
+{
+  "inpProofs": [
+    {
+      "0": [
+        {
+          "proof": "2162419ac8da8884f62540c272a85fa304e94510dece23f86aa298b8659999d5e132b20d0691770193c4af5e7c9e70b96cf53be3b85da417",
+          "position": "0-1"
+        }
+      ]
+    },
+    {
+      "0": [
+        {
+          "proof": "a5ceb19ecec207343109083092cd24c13c8f029f2c191311990303653b5e5e4d3f44b6f0d1f2035115da06e227dffc1ffdbe47ebeea12550",
+          "position": "0-0"
+        }
+      ]
+    },
+    {
+      "0": [
+        {
+          "proof": "1fc11d6c236b1b4417005af4dc31db86e5c6b72bf9d2071985623bbf45ea9f796a71f5f8e9afdc3b5dedcf94e6c92f75556a089d922e0adb",
+          "position": "0-9"
+        }
+      ]
+    },
+    {
+      "0": [
+        {
+          "proof": "24221d235f2d953039582e4c5ae6ea72c0426df70d6c6fda9a1b91ba0a19afd183e36e6cc15b25dce391604268029bd04cf4023f5aed4718",
+          "position": "0-3"
+        }
+      ]
+    }
+  ],
+  "tx": "8QEBpw9Ji+F7AYGTz+PfqP89ccQZQak51HlmVAsxtH9pu54AAAAAA4Ct4gQACM0D5b7as/eC7xenPpvcQe4OGMOrR3QA81vPfKpUFx23/zb0hlAAAMDSj1oACM0D5b7as/eC7xenPpvcQe4OGMOrR3QA81vPfKpUFx23/zb0hlAAAMCEPRAFBAAEAA42EAIEoAsIzQJ5vmZ++dy7rFWgYpXOhwsHApv82y3OKNlZ8oFbFvgXmOoC0ZKjmozHpwFzAHMBEAECBALRloMDAZOjjMeypXMAAAGTwrKlcwEAdHMCcwODAQjN7qyTsaVzBPSGUAAAmAYKzQIhnp3Z5zYM3kQiLGtKWf1O5rQ/cqDcIEJUURl/HAaiCc0CjRz73IHCoVdQdO92FFTPbYoznuz6Gyr7BSv8IXLjIuXNApXjFGu7HKxb2fQYgb7OaUL4r4Ux/xdswq8TgTEK+WXkzQKWWQf2DGtM0z3eVslzh/+GUzdODGTAzmsKZeeId6/cTc0DIoK6/Hj1ZTB3lKuxyk6Oe+swqrW4udCxyNjqenTmCoDNA28Hf6CFJvASjHBKapjNySTnrdDIFBaaqq52yTX1Ga7mzQN/z5/NTBOmoVS57GHzuCPSz7yd3fDYoE85rhclQI44/s0Do8u1o9EBdnVjx5rzC4Ju6h8KAbaUzyXPOKe0L9YGMgvNA67rtNUtSMVgIcTSsUDvTspDCtNO1zARHIrXzC6KR4k1zQPauqMrOzJ8Qjm408eNQPfAFwpqLq15EQtkobNfCVH+kgAA",
+  "hints": {
+    "secretHints": {
+      "0": []
+    },
+    "publicHints": {
+      "0": [
+        {
+          "hint": "cmtSimulated",
+          "pubkey": {
+            "op": "205",
+            "h": "02965907f60c6b4cd33dde56c97387ff8653374e0c64c0ce6b0a65e78877afdc4d"
+          },
+          "type": "dlog",
+          "a": "036d8536aa8c6ee058e39fc08d5ef79db5b93dda52bfefa1d10e583208017cbe6c",
+          "position": "0-3"
+        },
+        {
+          "hint": "cmtSimulated",
+          "pubkey": {
+            "op": "205",
+            "h": "03dabaa32b3b327c4239b8d3c78d40f7c0170a6a2ead79110b64a1b35f0951fe92"
+          },
+          "type": "dlog",
+          "a": "031772d59dac8b702c739c5656073feae82a9dfc80ca769b61dd10a73a5c77e265",
+          "position": "0-9"
+        },
+        {
+          "hint": "cmtSimulated",
+          "pubkey": {
+            "op": "205",
+            "h": "02219e9dd9e7360cde44222c6b4a59fd4ee6b43f72a0dc20425451197f1c06a209"
+          },
+          "type": "dlog",
+          "a": "0352d56830a0e082af5470d345ca87186cff1b8b78fe82a1c66dbfe3f15840e0d0",
+          "position": "0-0"
+        },
+        {
+          "hint": "cmtSimulated",
+          "pubkey": {
+            "op": "205",
+            "h": "028d1cfbdc81c2a1575074ef761454cf6d8a339eecfa1b2afb052bfc2172e322e5"
+          },
+          "type": "dlog",
+          "a": "03a04de5fa28adb32d8018ea87013f534eec597082703e782f6864d28bfc053aa0",
+          "position": "0-1"
+        },
+        {
+          "hint": "cmtReal",
+          "pubkey": {
+            "op": "205",
+            "h": "036f077fa08526f0128c704a6a98cdc924e7add0c814169aaaae76c935f519aee6"
+          },
+          "type": "dlog",
+          "a": "0281761d0ff5683250a2fa8eb52b969d8cffacb3887d9488f6e0fc50c9e48ad3e3",
+          "position": "0-5"
+        },
+        {
+          "hint": "cmtReal",
+          "pubkey": {
+            "op": "205",
+            "h": "03aeebb4d52d48c56021c4d2b140ef4eca430ad34ed730111c8ad7cc2e8a478935"
+          },
+          "type": "dlog",
+          "a": "033da2e5e313382a1578b2a75805f66018931f69cc5493915174ab5f4baa07023d",
+          "position": "0-8"
+        },
+        {
+          "hint": "cmtReal",
+          "pubkey": {
+            "op": "205",
+            "h": "03a3cbb5a3d101767563c79af30b826eea1f0a01b694cf25cf38a7b42fd606320b"
+          },
+          "type": "dlog",
+          "a": "03f8cf59bb705409c6231b637459b94debcad52c07654e085111d93d832efc122c",
+          "position": "0-7"
+        },
+        {
+          "hint": "cmtReal",
+          "pubkey": {
+            "op": "205",
+            "h": "0295e3146bbb1cac5bd9f41881bece6942f8af8531ff176cc2af1381310af965e4"
+          },
+          "type": "dlog",
+          "a": "03525fa6f890dde50f1a0b997cc220b81fad13d91cf37ff04a61ef418d4ff86ad3",
+          "position": "0-2"
+        },
+        {
+          "hint": "cmtReal",
+          "pubkey": {
+            "op": "205",
+            "h": "037fcf9fcd4c13a6a154b9ec61f3b823d2cfbc9dddf0d8a04f39ae1725408e38fe"
+          },
+          "type": "dlog",
+          "a": "027027c8eb26014400916900ce1ea6107f2b11a55a8e3623d3c321b99e1e610caa",
+          "position": "0-6"
+        },
+        {
+          "hint": "cmtReal",
+          "pubkey": {
+            "op": "205",
+            "h": "032282bafc78f565307794abb1ca4e8e7beb30aab5b8b9d0b1c8d8ea7a74e60a80"
+          },
+          "type": "dlog",
+          "a": "026977071c112848512dfc47cb3884441d83228742dcef7de8724646060e59cf25",
+          "position": "0-4"
+        }
+      ]
+    }
+  },
+  "proofs": {
+    "secretHints": {
+      "0": [
+        {
+          "hint": "proofSimulated",
+          "pubkey": {
+            "op": "205",
+            "h": "02965907f60c6b4cd33dde56c97387ff8653374e0c64c0ce6b0a65e78877afdc4d"
+          },
+          "challenge": "24221d235f2d953039582e4c5ae6ea72c0426df70d6c6fda",
+          "proof": "24221d235f2d953039582e4c5ae6ea72c0426df70d6c6fda9a1b91ba0a19afd183e36e6cc15b25dce391604268029bd04cf4023f5aed4718",
+          "position": "0-3"
+        },
+        {
+          "hint": "proofSimulated",
+          "pubkey": {
+            "op": "205",
+            "h": "03dabaa32b3b327c4239b8d3c78d40f7c0170a6a2ead79110b64a1b35f0951fe92"
+          },
+          "challenge": "1fc11d6c236b1b4417005af4dc31db86e5c6b72bf9d20719",
+          "proof": "1fc11d6c236b1b4417005af4dc31db86e5c6b72bf9d2071985623bbf45ea9f796a71f5f8e9afdc3b5dedcf94e6c92f75556a089d922e0adb",
+          "position": "0-9"
+        },
+        {
+          "hint": "proofSimulated",
+          "pubkey": {
+            "op": "205",
+            "h": "02219e9dd9e7360cde44222c6b4a59fd4ee6b43f72a0dc20425451197f1c06a209"
+          },
+          "challenge": "a5ceb19ecec207343109083092cd24c13c8f029f2c191311",
+          "proof": "a5ceb19ecec207343109083092cd24c13c8f029f2c191311990303653b5e5e4d3f44b6f0d1f2035115da06e227dffc1ffdbe47ebeea12550",
+          "position": "0-0"
+        },
+        {
+          "hint": "proofSimulated",
+          "pubkey": {
+            "op": "205",
+            "h": "028d1cfbdc81c2a1575074ef761454cf6d8a339eecfa1b2afb052bfc2172e322e5"
+          },
+          "challenge": "2162419ac8da8884f62540c272a85fa304e94510dece23f8",
+          "proof": "2162419ac8da8884f62540c272a85fa304e94510dece23f86aa298b8659999d5e132b20d0691770193c4af5e7c9e70b96cf53be3b85da417",
+          "position": "0-1"
+        }
+      ]
+    },
+    "publicHints": {
+      "0": []
+    }
+  },
+  "pubs": [
+    "028d1cfbdc81c2a1575074ef761454cf6d8a339eecfa1b2afb052bfc2172e322e5",
+    "02219e9dd9e7360cde44222c6b4a59fd4ee6b43f72a0dc20425451197f1c06a209",
+    "03dabaa32b3b327c4239b8d3c78d40f7c0170a6a2ead79110b64a1b35f0951fe92",
+    "02965907f60c6b4cd33dde56c97387ff8653374e0c64c0ce6b0a65e78877afdc4d"
+  ]
+}

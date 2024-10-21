@@ -214,32 +214,6 @@ export class MultiSigUtils {
   }
 
   /**
-   * extract commitments for specific guard from transaction hintbag
-   * when some hintbag extracted from json it used to get commitment for one guard
-   * @param extracted extract hintbag
-   * @param guardPkHex selected guard pk
-   * @param inputCount number of inputs
-   */
-  static convertHintBagToPublishedCommitmentForGuard = (
-    extracted: wasm.TransactionHintsBag,
-    guardPkHex: string,
-    inputCount: number,
-  ) => {
-    const res: PublishedCommitment = {};
-    const commitmentJson = extracted.to_json() as CommitmentJson;
-    for (let index = 0; index < inputCount; index++) {
-      res[`${index}`] = [];
-      const inputCommitments = commitmentJson.publicHints[`${index}`];
-      inputCommitments.forEach((item) => {
-        if (item.pubkey.h === guardPkHex) {
-          res[`${index}`].push({ position: item.position, a: item.a });
-        }
-      });
-    }
-    return res;
-  };
-
-  /**
    * compare two list of published commitment and verify to be equal.
    * @param item1
    * @param item2
