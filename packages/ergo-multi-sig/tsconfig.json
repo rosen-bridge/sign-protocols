@@ -4,5 +4,8 @@
     "outDir": "./dist"
   },
   "include": ["tests", "lib", "vitest.config.ts"],
-  "references": [{ "path": "../detection/tsconfig.build.json" }]
+  "references": [
+    { "path": "../detection/tsconfig.build.json" },
+    { "path": "../encryption/tsconfig.build.json" }
+  ]
 }

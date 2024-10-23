@@ -11,12 +11,11 @@ import {
   PublishedProof,
   SingleCommitment,
 } from './types';
-import Encryption from './utils/Encryption';
+import { CHALLENGE_LEN } from './const';
+import { ECDSA } from '@rosen-bridge/encryption';
 
 export class MultiSigUtils {
   getStateContext: () => Promise<wasm.ErgoStateContext>;
-
-  static CHALLENGE_LEN = 48;
 
   constructor(getStateContextFunction: () => Promise<wasm.ErgoStateContext>) {
     this.getStateContext = getStateContextFunction;
@@ -154,7 +153,7 @@ export class MultiSigUtils {
             op: '205',
             h: pubKey,
           },
-          challenge: proof.proof.slice(0, MultiSigUtils.CHALLENGE_LEN),
+          challenge: proof.proof.slice(0, CHALLENGE_LEN),
           proof: proof.proof,
           position: proof.position,
         });
@@ -383,14 +382,15 @@ export class MultiSigUtils {
    * @param pub guard's public key
    * @param data signed data
    */
-  static verifySignature = (
+  static verifySignature = async (
     signBase64: string,
     pub: string,
     data: string,
-  ): boolean => {
-    const publicKey = Buffer.from(pub, 'hex');
+    encryption: ECDSA,
+  ): Promise<boolean> => {
     const signature = Buffer.from(signBase64, 'base64');
-    return Encryption.verify(data, signature, publicKey);
+    const res = await encryption.verify(data, signature.toString('hex'), pub);
+    return res;
   };
 
   /**

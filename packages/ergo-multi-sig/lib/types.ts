@@ -3,11 +3,6 @@ import { AbstractLogger } from '@rosen-bridge/abstract-logger';
 import { MultiSigUtils } from './MultiSigUtils';
 import { GuardDetection } from '@rosen-bridge/detection';
 
-interface ApproveSigner {
-  id: string;
-  challenge: string;
-}
-
 interface Signer {
   id?: string;
   pub: string;
@@ -135,7 +130,6 @@ export enum MessageType {
   SignedTx = 'signedTx',
 }
 
-// Update the CommunicationMessage interface to use the new enum
 interface CommunicationMessage {
   type: MessageType;
   sign?: string;

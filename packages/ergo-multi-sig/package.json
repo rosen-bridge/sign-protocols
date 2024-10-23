@@ -33,6 +33,8 @@
   },
   "dependencies": {
     "@rosen-bridge/abstract-logger": "^1.0.0",
+    "@rosen-bridge/detection": "^0.1.0",
+    "@rosen-bridge/encryption": "^0.1.0",
     "await-semaphore": "^0.1.3",
     "blakejs": "^1.2.1",
     "ergo-lib-wasm-nodejs": "^0.24.1",

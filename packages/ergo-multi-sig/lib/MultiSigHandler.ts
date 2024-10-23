@@ -13,7 +13,7 @@ import {
 } from './types';
 import { turnTime } from './const';
 import { Semaphore } from 'await-semaphore';
-import Encryption from './utils/Encryption';
+import { ECDSA } from '@rosen-bridge/encryption';
 import { MultiSigUtils } from './MultiSigUtils';
 import { AbstractLogger, DummyLogger } from '@rosen-bridge/abstract-logger';
 import { ActiveGuard, GuardDetection } from '@rosen-bridge/detection';
@@ -35,6 +35,7 @@ export class MultiSigHandler {
   private semaphore = new Semaphore(1);
   private guardDetection: GuardDetection;
   private publicKey?: string;
+  private encryption: ECDSA;
 
   constructor(config: ErgoMultiSigConfig) {
     this.logger = config.logger ? config.logger : new DummyLogger();
@@ -46,6 +47,7 @@ export class MultiSigHandler {
     this.getPeerId = config.getPeerId;
     this.getPeerPks = config.getPeerPks;
     this.guardDetection = config.guardDetection;
+    this.encryption = new ECDSA(config.secretHex);
   }
 
   /**
@@ -111,10 +113,7 @@ export class MultiSigHandler {
    */
   getIndex = (): number => {
     if (this.index === undefined) {
-      const secret = wasm.SecretKey.dlog_from_bytes(this.secret);
-      const pub = Buffer.from(secret.get_address().content_bytes()).toString(
-        'hex',
-      );
+      const pub = this.getPk();
       this.index = this.peers()
         .map((peer) => peer.pub)
         .indexOf(pub);
@@ -213,9 +212,9 @@ export class MultiSigHandler {
     payload.index = this.getIndex();
     payload.id = await this.getPeerId();
     const payloadStr = JSON.stringify(message.payload);
-    message.sign = Buffer.from(
-      Encryption.sign(payloadStr, Buffer.from(this.secret)),
-    ).toString('base64');
+    message.sign = Buffer.from(await this.encryption.sign(payloadStr)).toString(
+      'base64',
+    );
     if (receivers && receivers.length) {
       await this.submitMessage(JSON.stringify(message), receivers);
     } else {
@@ -768,10 +767,11 @@ export class MultiSigHandler {
 
       const index = message.payload.index;
       if (
-        MultiSigUtils.verifySignature(
+        await MultiSigUtils.verifySignature(
           message.sign,
           this.peers()[index].pub,
           JSON.stringify(message.payload),
+          this.encryption,
         )
       ) {
         switch (message.type) {

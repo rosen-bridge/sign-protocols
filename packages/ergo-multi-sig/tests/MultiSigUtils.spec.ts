@@ -330,6 +330,20 @@ describe('MultiSigUtils', () => {
   });
 
   describe('add_hints', () => {
+    /**
+     * @target MultiSigUtils.add_hints should correctly combine hints
+     * @dependencies
+     * - ergo-lib-wasm-nodejs
+     * - fs
+     * @scenario
+     * - Read the simHintsData and other necessary data from JSON files
+     * - Create a ReducedTransaction object from the data
+     * - Create TransactionHintsBag objects from the data
+     * - Call add_hints with the prepared data
+     * - Compare the result with the expected combined hints
+     * @expected
+     * - The combined hints should match the expected addedHints from the JSON file
+     */
     it('should correctly combine hints', async () => {
       // Read the simHintsData from the JSON file
       const simHintsDataPath = path.join(
@@ -373,6 +387,19 @@ describe('MultiSigUtils', () => {
   });
 
   describe('publishedCommitmentsToHintBag', () => {
+    /**
+     * @target MultiSigUtils.publishedCommitmentsToHintBag should correctly convert published commitments to hint bag
+     * @dependencies
+     * - ergo-lib-wasm-nodejs
+     * - fs
+     * @scenario
+     * - Read the publishData from the JSON file
+     * - Create necessary objects from the data
+     * - Call publishedCommitmentsToHintBag with the prepared data
+     * - Compare the result with the expected hints
+     * @expected
+     * - The converted hint bag should match the expected hints from the JSON file
+     */
     it('should correctly convert published commitments to hint bag', () => {
       // Read the publishData from the JSON file
       const publishDataPath = path.join(__dirname, 'data', 'publishData.json');
@@ -398,6 +425,19 @@ describe('MultiSigUtils', () => {
   });
 
   describe('publishedProofsToHintBag', () => {
+    /**
+     * @target MultiSigUtils.publishedProofsToHintBag should correctly convert published proofs to hint bag
+     * @dependencies
+     * - ergo-lib-wasm-nodejs
+     * - fs
+     * @scenario
+     * - Read the publishedProofData from the JSON file
+     * - Create necessary objects from the data
+     * - Call publishedProofsToHintBag with the prepared data
+     * - Compare the result with the expected proofs
+     * @expected
+     * - The converted hint bag should match the expected proofs from the JSON file
+     */
     it('should correctly convert published proofs to hint bag', () => {
       // Read the publishedProofData from the JSON file
       const publishedProofDataPath = path.join(
@@ -428,7 +468,21 @@ describe('MultiSigUtils', () => {
       expect(result.to_json()).toEqual(expectedProofs.to_json());
     });
   });
+
   describe('toReducedPublishedCommitments', () => {
+    /**
+     * @target MultiSigUtils.toReducedPublishedCommitments should correctly convert secret to reduced published commitments
+     * @dependencies
+     * - ergo-lib-wasm-nodejs
+     * - fs
+     * @scenario
+     * - Read the reducedCommitmentData from the JSON file
+     * - Create necessary objects from the data
+     * - Call toReducedPublishedCommitments with the prepared data
+     * - Compare the result with the expected commitments
+     * @expected
+     * - The reduced published commitments should match the expected commitments from the JSON file
+     */
     it('should correctly convert secret to reduced published commitments', () => {
       // Read the reducedCommitmentData from the JSON file
       const reducedCommitmentDataPath = path.join(
@@ -452,6 +506,19 @@ describe('MultiSigUtils', () => {
   });
 
   describe('toReducedPublishedCommitmentsArray', () => {
+    /**
+     * @target MultiSigUtils.toReducedPublishedCommitmentsArray should correctly convert hints to reduced published commitments array
+     * @dependencies
+     * - ergo-lib-wasm-nodejs
+     * - fs
+     * @scenario
+     * - Read the simHintsPublishData from the JSON file
+     * - Create necessary objects from the data
+     * - Call toReducedPublishedCommitmentsArray with the prepared data
+     * - Compare the result with the expected commitments array
+     * @expected
+     * - The reduced published commitments array should match the expected array from the JSON file
+     */
     it('should correctly convert hints to reduced published commitments array', () => {
       // Read the simHintsPublishData from the JSON file
       const simHintsPublishDataPath = path.join(
@@ -478,6 +545,19 @@ describe('MultiSigUtils', () => {
   });
 
   describe('hintBagToPublishedProof', () => {
+    /**
+     * @target MultiSigUtils.hintBagToPublishedProof should correctly convert hint bag to published proof
+     * @dependencies
+     * - ergo-lib-wasm-nodejs
+     * - fs
+     * @scenario
+     * - Read the publishedProofData from the JSON file
+     * - Create necessary objects from the data
+     * - Call hintBagToPublishedProof with the prepared data
+     * - Compare the result with the expected proof
+     * @expected
+     * - The published proof should match the expected proof from the JSON file
+     */
     it('should correctly convert hint bag to published proof', () => {
       // Read the publishedProofData from the JSON file
       const publishedProofDataPath = path.join(
@@ -501,6 +581,19 @@ describe('MultiSigUtils', () => {
   });
 
   describe('toReducedPublishedProofsArray', () => {
+    /**
+     * @target MultiSigUtils.toReducedPublishedProofsArray should correctly convert hints to reduced published proofs array
+     * @dependencies
+     * - ergo-lib-wasm-nodejs
+     * - fs
+     * @scenario
+     * - Read the simPublishedProofsData from the JSON file
+     * - Create necessary objects from the data
+     * - Call toReducedPublishedProofsArray with the prepared data
+     * - Compare the result with the expected proofs array
+     * @expected
+     * - The reduced published proofs array should match the expected array from the JSON file
+     */
     it('should correctly convert hints to reduced published proofs array', () => {
       // Read the simPublishedProofsData from the JSON file
       const simPublishedProofsDataPath = path.join(
@@ -527,6 +620,20 @@ describe('MultiSigUtils', () => {
   });
 
   describe('verifyInput', () => {
+    /**
+     * @target MultiSigUtils.verifyInput should correctly verify a valid transaction input
+     * @dependencies
+     * - ergo-lib-wasm-nodejs
+     * - fs
+     * @scenario
+     * - Read the validTxData from the JSON file
+     * - Create necessary objects from the data
+     * - Create a MultiSigUtils instance with a mock getStateContext function
+     * - Call verifyInput with the prepared data
+     * - Check if the result is true
+     * @expected
+     * - The verifyInput function should return true for a valid transaction input
+     */
     it('should correctly verify a valid transaction input', async () => {
       // Read the validTxData from the JSON file
       const validTxDataPath = path.join(__dirname, 'data', 'validTxData.json');
