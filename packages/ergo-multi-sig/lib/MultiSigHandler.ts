@@ -212,9 +212,10 @@ export class MultiSigHandler {
     payload.index = this.getIndex();
     payload.id = await this.getPeerId();
     const payloadStr = JSON.stringify(message.payload);
-    message.sign = Buffer.from(await this.encryption.sign(payloadStr)).toString(
-      'base64',
-    );
+    message.sign = Buffer.from(
+      await this.encryption.sign(payloadStr),
+      'hex',
+    ).toString('base64');
     if (receivers && receivers.length) {
       await this.submitMessage(JSON.stringify(message), receivers);
     } else {
