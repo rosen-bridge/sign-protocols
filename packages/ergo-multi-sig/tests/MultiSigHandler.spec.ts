@@ -155,33 +155,10 @@ describe('MultiSigHandler', () => {
         testPubs,
       );
       vi.setSystemTime(0);
-      expect(handler.isMyTurn()).to.be.true;
+      expect(await handler.isMyTurn()).to.be.true;
       vi.setSystemTime(turnTime);
-      expect(handler.isMyTurn()).to.be.false;
-      expect(handler2.isMyTurn()).to.be.true;
-    });
-  });
-
-  /**
-   * @target MultiSigHandler.verifyIndex should return true if index is verified
-   * @dependencies
-   * @scenario
-   * - run test
-   * - check returned value
-   * @expected
-   * - returned value should be equal to the peer index
-   */
-  describe('getIndex', () => {
-    it('should return index of the handler', async () => {
-      for (let i = 0; i < testPubs.length; i++) {
-        const sender = vi.fn();
-        const handler = await TestUtils.generateMultiSigHandlerInstance(
-          testSecrets[i],
-          sender,
-          testPubs,
-        );
-        expect(handler.getIndex()).to.equal(i);
-      }
+      expect(await handler.isMyTurn()).to.be.false;
+      expect(await handler2.isMyTurn()).to.be.true;
     });
   });
 
@@ -378,10 +355,12 @@ describe('MultiSigHandler', () => {
         testPubs,
       );
       const mockedSendMessage = vi.fn();
-      vi.spyOn(handler, 'sendMessage').mockImplementation(mockedSendMessage);
+      vi.spyOn(handler as any, 'sendMessage').mockImplementation(
+        mockedSendMessage,
+      );
       await TestUtils.addTx(handler, reduced, requiredSings, boxes, dataBoxes);
       vi.setSystemTime(0);
-      handler.generateCommitment(reduced.unsigned_tx().id().to_str());
+      await handler.generateCommitment(reduced.unsigned_tx().id().to_str());
       expect(mockedSendMessage).not.toHaveBeenCalled();
     });
 
@@ -403,7 +382,9 @@ describe('MultiSigHandler', () => {
         testPubs,
       );
       const mockedSendMessage = vi.fn();
-      vi.spyOn(handler, 'sendMessage').mockImplementation(mockedSendMessage);
+      vi.spyOn(handler as any, 'sendMessage').mockImplementation(
+        mockedSendMessage,
+      );
       await TestUtils.addTx(handler, reduced, requiredSings, boxes, dataBoxes);
       vi.setSystemTime(turnTime);
       await handler.generateCommitment(reduced.unsigned_tx().id().to_str());
@@ -431,7 +412,9 @@ describe('MultiSigHandler', () => {
         testPubs,
       );
       const mockedSendMessage = vi.fn();
-      vi.spyOn(handler, 'sendMessage').mockImplementation(mockedSendMessage);
+      vi.spyOn(handler as any, 'sendMessage').mockImplementation(
+        mockedSendMessage,
+      );
       await TestUtils.addTx(handler, reduced, requiredSings, boxes, dataBoxes);
 
       vi.setSystemTime(turnTime);
@@ -439,6 +422,7 @@ describe('MultiSigHandler', () => {
         '0',
         testCmt.payload as CommitmentPayload,
         testCmt.sign,
+        0, // Pass the index here
       );
       expect(mockedSendMessage).not.toHaveBeenCalled();
       const { transaction, release } = await handler.getQueuedTransaction(
@@ -466,7 +450,9 @@ describe('MultiSigHandler', () => {
         testPubs,
       );
       const mockedSendMessage = vi.fn();
-      vi.spyOn(handler, 'sendMessage').mockImplementation(mockedSendMessage);
+      vi.spyOn(handler as any, 'sendMessage').mockImplementation(
+        mockedSendMessage,
+      );
       await TestUtils.addTx(handler, reduced, requiredSings, boxes, dataBoxes);
 
       vi.setSystemTime(0);
@@ -475,6 +461,7 @@ describe('MultiSigHandler', () => {
         '0',
         testCmt.payload as CommitmentPayload,
         testCmt.sign,
+        0, // Pass the index here
       );
       expect(mockedSendMessage).not.toHaveBeenCalled();
       const { transaction, release } = await handler.getQueuedTransaction(
@@ -506,7 +493,7 @@ describe('MultiSigHandler', () => {
         ),
       );
       const handlers = allHandlers.slice(0, 3);
-      simulatedSender.changeHandlers(handlers, testPubs);
+      await simulatedSender.changeHandlers(handlers, testPubs);
       vi.setSystemTime(0);
       await Promise.all(
         handlers.map((handler) => {
@@ -581,7 +568,7 @@ describe('MultiSigHandler', () => {
       const { transaction, release } = await turnHandler.getQueuedTransaction(
         reduced.unsigned_tx().id().to_str(),
       );
-      expect(transaction.coordinator).toEqual(-1);
+      expect(transaction.coordinator).toEqual(0);
     });
   });
 
@@ -688,14 +675,20 @@ describe('MultiSigHandler', () => {
       await TestUtils.addTx(handler, reduced, requiredSings, boxes, dataBoxes);
       vi.setSystemTime(0);
       const sender = vi.fn();
-      vi.spyOn(handler, 'sendMessage').mockImplementation(sender);
+      vi.spyOn(handler as any, 'sendMessage').mockImplementation(sender);
       await handler.handleMyTurn();
-      expect(sender).toHaveBeenLastCalledWith({
-        type: 'generateCommitment',
-        payload: {
-          txId: reduced.unsigned_tx().id().to_str(),
-        },
-      });
+      // expect(sender).toHaveBeenLastCalledWith({
+      //   type: 'generateCommitment',
+      //   payload: {
+      //     txId: reduced.unsigned_tx().id().to_str(),
+      //   },
+      // });
+      expect(sender).toHaveBeenLastCalledWith(
+        'generateCommitment',
+        { txId: reduced.unsigned_tx().id().to_str() },
+        testPubs,
+        0,
+      );
     });
 
     /**
@@ -720,19 +713,19 @@ describe('MultiSigHandler', () => {
       await TestUtils.addTx(handler, reduced, requiredSings, boxes, dataBoxes);
       vi.setSystemTime(turnTime);
       const sender = vi.fn();
-      vi.spyOn(handler, 'sendMessage').mockImplementation(sender);
+      vi.spyOn(handler as any, 'sendMessage').mockImplementation(sender);
       await handler.handleMyTurn();
       expect(sender).not.toHaveBeenCalled();
 
       vi.setSystemTime(0);
       await handler.handleMyTurn();
 
-      expect(sender).toHaveBeenLastCalledWith({
-        type: 'generateCommitment',
-        payload: {
-          txId: reduced.unsigned_tx().id().to_str(),
-        },
-      });
+      expect(sender).toHaveBeenLastCalledWith(
+        'generateCommitment',
+        { txId: reduced.unsigned_tx().id().to_str() },
+        testPubs,
+        0,
+      );
     });
   });
 });

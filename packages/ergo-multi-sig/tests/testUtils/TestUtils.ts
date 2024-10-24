@@ -49,7 +49,7 @@ class TestUtils {
       submit: submit,
       getPeerId: () => Promise.resolve(testPubs[secretInd]),
       guardDetection: guardDetection,
-      getPeerPks: () => pubKeys,
+      guardsPk: pubKeys,
     });
   };
 

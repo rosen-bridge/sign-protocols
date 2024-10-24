@@ -145,7 +145,7 @@ interface ErgoMultiSigConfig {
   submit: (msg: string, peers: Array<string>) => unknown;
   guardDetection: GuardDetection;
   getPeerId: () => Promise<string>;
-  getPeerPks: () => string[];
+  guardsPk: Array<string>;
 }
 
 export {

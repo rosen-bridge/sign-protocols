@@ -9,10 +9,13 @@ export class SenderSimulated {
    * @param handlers MultiSigHandlers
    * @param pubs public keys of the handlers
    */
-  changeHandlers = (handlers: Array<MultiSigHandler>, pubs: Array<string>) => {
+  changeHandlers = async (
+    handlers: Array<MultiSigHandler>,
+    pubs: Array<string>,
+  ) => {
     handlers.forEach((handler) => {
-      const id = pubs[handler.getIndex()];
-      this.idToHandler[id] = handler;
+      const pk = handler.getPk();
+      this.idToHandler[pk] = handler;
     });
   };
 
@@ -26,13 +29,11 @@ export class SenderSimulated {
     if (peers.length > 0) {
       toSend = peers;
     }
-    const msgJson = JSON.parse(msg);
     await Promise.all(
       toSend.map((id) => {
         const handler = this.idToHandler[id];
         if (handler) {
-          const id = msgJson.payload.id;
-          return handler.handleMessage(msg, '', id);
+          return handler.handleMessage(msg, id);
         }
       }),
     );
