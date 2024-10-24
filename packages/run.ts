@@ -37,7 +37,7 @@ const generateMultiSigHandlerInstance = async (
   const publicKeys = pks ? pks : pubs;
   const secretInd = secrets.indexOf(secret);
   const dummyGuardDetection = {
-    activeGuards: async () => publicKeys.map((pk, index) => ({ publicKey: pk, peerId: `peer${index}` })),
+    activeGuards: async () => publicKeys.map((pk, index) => ({ publicKey: pk, peerId: pk })),
   } as GuardDetection;
 
   const handler = new MultiSigHandler({
@@ -46,7 +46,7 @@ const generateMultiSigHandlerInstance = async (
     txSignTimeout: TestConfigs.txSignTimeout,
     submit: testSubmit,
     getPeerId: () => Promise.resolve(`peer${secretInd}`),
-    getPeerPks: () => publicKeys,
+    guardsPk: publicKeys,
     guardDetection: dummyGuardDetection,
     logger: new DummyLogger(),
   });
@@ -68,7 +68,7 @@ const test = async () => {
     ),
   );
   handlers.forEach((handler) => {
-    const id = `peer${handler.getIndex()}`;
+    const id = handler.getPk();
     idToHandler[id] = handler;
   });
 

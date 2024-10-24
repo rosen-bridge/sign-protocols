@@ -568,7 +568,7 @@ describe('MultiSigHandler', () => {
       const { transaction, release } = await turnHandler.getQueuedTransaction(
         reduced.unsigned_tx().id().to_str(),
       );
-      expect(transaction.coordinator).toEqual(0);
+      expect(transaction.coordinator).toEqual(-1);
     });
   });
 
