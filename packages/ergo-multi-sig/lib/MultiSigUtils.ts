@@ -80,9 +80,9 @@ export class MultiSigUtils {
   static add_hints = (
     currentHints: wasm.TransactionHintsBag,
     newHints: wasm.TransactionHintsBag,
-    tx: wasm.ReducedTransaction,
+    inputLen: number,
   ): void => {
-    for (let index = 0; index < tx.unsigned_tx().inputs().len(); index++) {
+    for (let index = 0; index < inputLen; index++) {
       currentHints.add_hints_for_input(
         index,
         newHints.all_hints_for_input(index),
@@ -172,7 +172,7 @@ export class MultiSigUtils {
   static publishedProofsToHintBag(
     publishedProofs: PublishedProof[],
     pubKeys: string[],
-    tx: ReducedTransaction,
+    inputLen: number,
     type = 'proofReal',
   ): wasm.TransactionHintsBag {
     const hints = wasm.TransactionHintsBag.empty();
@@ -182,7 +182,7 @@ export class MultiSigUtils {
         pubKeys[index],
         type,
       );
-      MultiSigUtils.add_hints(hints, hintBag, tx);
+      MultiSigUtils.add_hints(hints, hintBag, inputLen);
     });
     return hints;
   }
@@ -197,7 +197,7 @@ export class MultiSigUtils {
   static publishedCommitmentsToHintBag(
     publishedCommitments: PublishedCommitment[],
     pubKeys: string[],
-    tx: ReducedTransaction,
+    inputLen: number,
     type = 'cmtReal',
   ): wasm.TransactionHintsBag {
     const hints = wasm.TransactionHintsBag.empty();
@@ -207,7 +207,7 @@ export class MultiSigUtils {
         pubKeys[index],
         type,
       );
-      MultiSigUtils.add_hints(hints, hintBag, tx);
+      MultiSigUtils.add_hints(hints, hintBag, inputLen);
     });
     return hints;
   }
@@ -321,7 +321,7 @@ export class MultiSigUtils {
     hintBag: wasm.TransactionHintsBag,
     pub: string,
   ): PublishedProof => {
-    const hintsJs = hintBag.to_json();
+    const hintsJs: CommitmentJson = hintBag.to_json() as CommitmentJson;
     const publishedProof: PublishedProof = {};
     const privateHints = hintsJs.secretHints;
     Object.keys(privateHints).forEach((key) => {
@@ -364,7 +364,7 @@ export class MultiSigUtils {
     for (let ind = 0; ind < tx.inputs().len(); ind++) {
       if (
         !wasm.verify_tx_input_proof(
-          0,
+          ind,
           context,
           tx,
           ergoBoxes,

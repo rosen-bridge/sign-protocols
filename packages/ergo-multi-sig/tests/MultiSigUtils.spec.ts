@@ -376,7 +376,7 @@ describe('MultiSigUtils', () => {
       MultiSigUtils.add_hints(
         hints,
         wasm.TransactionHintsBag.from_json(JSON.stringify(first)),
-        tx,
+        tx.unsigned_tx().inputs().len(),
       );
 
       const expectedSimHints = wasm.TransactionHintsBag.from_json(
@@ -411,10 +411,11 @@ describe('MultiSigUtils', () => {
         Buffer.from(publishData.tx, 'base64'),
       );
 
+      const inputLen = tx.unsigned_tx().inputs().len();
       const result = MultiSigUtils.publishedCommitmentsToHintBag(
         cmts,
         pubs,
-        tx,
+        inputLen,
       );
 
       const expectedHints = wasm.TransactionHintsBag.from_json(
@@ -455,10 +456,11 @@ describe('MultiSigUtils', () => {
         Buffer.from(publishedProofData.tx, 'base64'),
       );
 
+      const inputLen = tx.unsigned_tx().inputs().len();
       const result = MultiSigUtils.publishedProofsToHintBag(
         inpProofs,
         pubs,
-        tx,
+        inputLen,
         'proofSimulated',
       );
 

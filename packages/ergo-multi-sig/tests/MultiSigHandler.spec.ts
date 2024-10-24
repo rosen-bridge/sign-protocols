@@ -266,25 +266,6 @@ describe('MultiSigHandler', () => {
     });
   });
 
-  describe('getProver', () => {
-    /**
-     * @target MultiSigHandler.getProver should run successfully
-     * @dependencies
-     * @scenario
-     * - run test
-     * @expected
-     * - only no error throws
-     */
-    it('should run successfully', async () => {
-      const handler = await TestUtils.generateMultiSigHandlerInstance(
-        testSecrets[0],
-        vi.fn(),
-        testPubs,
-      );
-      handler.getProver();
-    });
-  });
-
   describe('addTx', () => {
     /**
      * @target MultiSigHandler.addTx should add transaction to the queue

@@ -110,15 +110,22 @@ export class MultiSigHandler extends Communicator {
       );
   };
 
+  private derivePublicKey = (): void => {
+    const secret = wasm.SecretKey.dlog_from_bytes(this.secret);
+    this.publicKey = Buffer.from(secret.get_address().content_bytes()).toString(
+      'hex',
+    );
+  };
+
   /**
    * getting this guard's public key
    */
   getPk = (): string => {
     if (!this.publicKey) {
-      const secret = wasm.SecretKey.dlog_from_bytes(this.secret);
-      this.publicKey = Buffer.from(
-        secret.get_address().content_bytes(),
-      ).toString('hex');
+      this.derivePublicKey();
+    }
+    if (!this.publicKey) {
+      throw Error('Cannot derive public key in MultiSig');
     }
     return this.publicKey;
   };
@@ -190,7 +197,7 @@ export class MultiSigHandler extends Communicator {
   /**
    * getting prover that makes with guard secrets
    */
-  getProver = (): wasm.Wallet => {
+  private getProver = (): wasm.Wallet => {
     if (!this.prover) {
       const secret = wasm.SecretKey.dlog_from_bytes(this.secret);
       const secretKeys = new wasm.SecretKeys();
@@ -209,7 +216,7 @@ export class MultiSigHandler extends Communicator {
     const currentTurn = this.getCurrentTurnInd();
     const currentTurnId = await this.getCurrentTurnId();
     if (currentTurnId === undefined) {
-      this.logger.debug(
+      this.logger.warn(
         `Cannot generate and send commitment for tx [${txId}] because the peer with the correct turn is not initialized yet.`,
       );
       return;
@@ -226,15 +233,13 @@ export class MultiSigHandler extends Communicator {
 
       // publishable commitment
       const myPub = this.getPk();
-      transaction.commitments[myPub] =
-        MultiSigUtils.toReducedPublishedCommitments(transaction.secret, myPub);
-
       const publishCommitments = MultiSigUtils.toReducedPublishedCommitments(
         transaction.secret,
         myPub,
       );
+      transaction.commitments[myPub] = publishCommitments;
       this.logger.debug(
-        `Commitment generated for tx [${txId}]. Broadcasting to the peer with the correct turn...`,
+        `Commitment generated for tx [${txId}]. Broadcasting to the peer with the correct turn (peer ID: ${currentTurnId})...`,
       );
       // don't send if it's my turn
       if (!(await this.isMyTurn()))
@@ -265,7 +270,7 @@ export class MultiSigHandler extends Communicator {
   ): Promise<void> => {
     if (!(await this.isMyTurn())) {
       this.logger.debug(
-        `Received commitment from [${sender}] but it's not my turn.`,
+        `Received commitment from [${sender}] but it's not this guard's turn. Current turn: ${await this.getCurrentTurnId()}.`,
       );
       return;
     }
@@ -277,7 +282,7 @@ export class MultiSigHandler extends Communicator {
       );
 
       if (transaction.tx === undefined || transaction.secret === undefined) {
-        this.logger.debug(
+        this.logger.info(
           `Received commitment for tx [${payload.txId}] but the transaction is not properly in the queue yet.`,
         );
         release();
@@ -297,7 +302,7 @@ export class MultiSigHandler extends Communicator {
             Object.keys(transaction.commitments).length >=
             transaction.requiredSigner
           ) {
-            this.logger.debug(`Tx [${payload.txId}] has enough commitments.`);
+            this.logger.info(`Tx [${payload.txId}] has enough commitments.`);
 
             const willSignPubs = Object.keys(transaction.commitments);
             const willSignInds = willSignPubs.map((pub) =>
@@ -309,10 +314,11 @@ export class MultiSigHandler extends Communicator {
               .filter((peer) => !willSignPubs.includes(peer.pub))
               .map((peer) => peer.pub);
 
+            const inputLen = transaction.tx.unsigned_tx().inputs().len();
             const hints = MultiSigUtils.publishedCommitmentsToHintBag(
               Object.values(transaction.commitments),
               willSignPubs,
-              transaction.tx,
+              inputLen,
             );
             const hintsCopy = wasm.TransactionHintsBag.from_json(
               JSON.stringify(hints.to_json()),
@@ -330,7 +336,7 @@ export class MultiSigHandler extends Communicator {
               [],
               simulated,
             );
-            MultiSigUtils.add_hints(hints, simHints, transaction.tx);
+            MultiSigUtils.add_hints(hints, simHints, inputLen);
 
             transaction.simulatedBag = simHints;
             const simHintsPublish =
@@ -341,7 +347,7 @@ export class MultiSigHandler extends Communicator {
             const simPublishedProofs =
               MultiSigUtils.toReducedPublishedProofsArray(simHints, simulated);
 
-            MultiSigUtils.add_hints(hints, transaction.secret, transaction.tx);
+            MultiSigUtils.add_hints(hints, transaction.secret, inputLen);
             const signedTx = this.getProver().sign_reduced_transaction_multi(
               transaction.tx,
               hints,
@@ -374,7 +380,7 @@ export class MultiSigHandler extends Communicator {
               .map((peer) => peer.id)
               .filter((id): id is string => id !== undefined);
 
-            this.logger.debug(
+            this.logger.info(
               `All commitments received for tx [${payload.txId}]. Initiating sign...`,
             );
 
@@ -393,7 +399,7 @@ export class MultiSigHandler extends Communicator {
         }
       } else {
         this.logger.debug(
-          'A new commitment has been received for a transaction that has sufficient commitment.',
+          `A new commitment has been received from [${sender}] for transaction [${payload.txId}] that has sufficient commitment.`,
         );
       }
       release();
@@ -401,7 +407,7 @@ export class MultiSigHandler extends Communicator {
   };
 
   /**
-   * all peers partially sing the transaction and send the proof to the peer with the correct turn
+   * all peers partially sign the transaction and send the proof to the peer with the correct turn
    * @param sender the peer who initiated the sign
    * @param payload initiate sign payload
    */
@@ -413,53 +419,54 @@ export class MultiSigHandler extends Communicator {
     const currentTurn = this.getCurrentTurnInd();
     if (currentTurn !== index) {
       this.logger.debug(
-        `Received initiate sign from [${sender}] but it's not that guard's turn.`,
+        `Received initiate sign from [${sender}] but it's not that guard's turn. The correct turn is [${currentTurn}].`,
       );
       return;
     }
-    this.logger.debug(`Initiating sign for tx [${payload.txId}]...`);
     try {
       const { transaction, release } = await this.getQueuedTransaction(
         payload.txId,
       );
       if (transaction.tx === undefined || transaction.secret === undefined) {
-        this.logger.debug(
+        this.logger.info(
           `Received initiate sign for tx [${payload.txId}] but the transaction is not properly in the queue yet.`,
         );
         release();
         return;
       }
+      this.logger.info(`Initiating sign for tx [${payload.txId}]...`);
       const myPub = this.getPk();
       const signed = payload.committedInds.map((ind) => this.peers()[ind].pub);
       const simulated = this.peers()
         .filter((peer) => !signed.includes(peer.pub))
         .map((peer) => peer.pub);
 
+      const inputLen = transaction.tx.unsigned_tx().inputs().len();
       const hints = wasm.TransactionHintsBag.empty();
       const cmtHints = MultiSigUtils.publishedCommitmentsToHintBag(
         payload.cmts,
         signed,
-        transaction.tx,
+        inputLen,
       );
-      MultiSigUtils.add_hints(hints, cmtHints, transaction.tx);
+      MultiSigUtils.add_hints(hints, cmtHints, inputLen);
 
       const simHints = MultiSigUtils.publishedCommitmentsToHintBag(
         payload.simulated,
         simulated,
-        transaction.tx,
+        inputLen,
         'cmtSimulated',
       );
-      MultiSigUtils.add_hints(hints, simHints, transaction.tx);
+      MultiSigUtils.add_hints(hints, simHints, inputLen);
 
       const simProofs = MultiSigUtils.publishedProofsToHintBag(
         payload.simulatedProofs,
         simulated,
-        transaction.tx,
+        inputLen,
         'proofSimulated',
       );
-      MultiSigUtils.add_hints(hints, simProofs, transaction.tx);
+      MultiSigUtils.add_hints(hints, simProofs, inputLen);
 
-      MultiSigUtils.add_hints(hints, transaction.secret, transaction.tx);
+      MultiSigUtils.add_hints(hints, transaction.secret, inputLen);
 
       const partial = this.getProver().sign_reduced_transaction_multi(
         transaction.tx,
@@ -481,6 +488,9 @@ export class MultiSigHandler extends Communicator {
       };
 
       release();
+      this.logger.info(
+        `Sending proof to [${sender}] for tx [${payload.txId}]...`,
+      );
       await this.sendMessage(
         MessageType.Sign,
         signPayload,
@@ -513,7 +523,7 @@ export class MultiSigHandler extends Communicator {
         transaction.tx === undefined ||
         transaction.simulatedBag === undefined
       ) {
-        this.logger.debug(
+        this.logger.info(
           `Received proof from [${sender}] for tx [${payload.txId}] but the transaction is not properly in the queue yet.`,
         );
         release();
@@ -526,32 +536,29 @@ export class MultiSigHandler extends Communicator {
       transaction.signs[pub] = payload.proof;
 
       if (Object.keys(transaction.signs).length >= transaction.requiredSigner) {
-        this.logger.debug(
+        this.logger.info(
           `All proofs received for tx [${payload.txId}]. Signing...`,
         );
 
+        const inputLen = transaction.tx.unsigned_tx().inputs().len();
         const allHints = wasm.TransactionHintsBag.empty();
         const signedOrder = Object.keys(transaction.signs);
         const signedProofs = signedOrder.map((key) => transaction.signs[key]);
         const hintBag = MultiSigUtils.publishedProofsToHintBag(
           signedProofs,
           signedOrder,
-          transaction.tx,
+          inputLen,
         );
-        MultiSigUtils.add_hints(allHints, hintBag, transaction.tx);
+        MultiSigUtils.add_hints(allHints, hintBag, inputLen);
 
-        MultiSigUtils.add_hints(
-          allHints,
-          transaction.simulatedBag,
-          transaction.tx,
-        );
+        MultiSigUtils.add_hints(allHints, transaction.simulatedBag, inputLen);
 
         const cmtHints = MultiSigUtils.publishedCommitmentsToHintBag(
           Object.values(transaction.commitments),
           Object.keys(transaction.commitments),
-          transaction.tx,
+          inputLen,
         );
-        MultiSigUtils.add_hints(allHints, cmtHints, transaction.tx);
+        MultiSigUtils.add_hints(allHints, cmtHints, inputLen);
 
         const signed =
           MultiSigUtils.getEmptyProver().sign_reduced_transaction_multi(
@@ -628,7 +635,7 @@ export class MultiSigHandler extends Communicator {
    * asks other peers to generate commitment
    * @param txId
    */
-  handleMyTurnForTx = async (txId: string) => {
+  public handleMyTurnForTx = async (txId: string) => {
     const transaction = this.transactions.get(txId);
     if (!transaction) return;
     transaction.simulatedBag = wasm.TransactionHintsBag.empty();
@@ -639,7 +646,7 @@ export class MultiSigHandler extends Communicator {
 
     if ((await this.isMyTurn()) && transaction.coordinator !== myInd) {
       this.logger.debug(
-        `Initiating sign for tx [${txId}] because it's my turn...`,
+        `Initiating sign for tx [${txId}] because it's this guards turn. The correct turn is [${await this.getCurrentTurnId()}]...`,
       );
       transaction.coordinator = myInd;
       await this.generateCommitment(txId);
@@ -662,10 +669,12 @@ export class MultiSigHandler extends Communicator {
   /**
    * if it's this peer's turn, handle all transactions in the queue for potential signing
    */
-  handleMyTurn = async () => {
+  public handleMyTurn = async () => {
     if (!(await this.isMyTurn())) return;
-    this.logger.debug('Handling my turn for all transactions in the queue...');
-    for (const [txId, transaction] of Array.from(this.transactions)) {
+    this.logger.debug(
+      `Handling my turn for all transactions in the queue. Current turn: ${await this.getCurrentTurnId()}...`,
+    );
+    for (const txId of this.transactions.keys()) {
       await this.handleMyTurnForTx(txId);
     }
   };
@@ -702,7 +711,6 @@ export class MultiSigHandler extends Communicator {
         this.logger.error(
           `An error occurred while removing unsigned transactions from MultiSig queue: ${e}`,
         );
-        if (e instanceof Error && e.stack) this.logger.error(e.stack);
         throw e;
       }
       this.logger.info(`MultiSig queue cleaned up`, {
