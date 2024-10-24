@@ -169,15 +169,15 @@ export class MultiSigHandler extends Communicator {
     this.peersMustBeInitialized();
     return new Promise<wasm.Transaction>((resolve, reject) => {
       this.getQueuedTransaction(tx.unsigned_tx().id().to_str())
-        .then(({ transaction, release }) => {
+        .then(async ({ transaction, release }) => {
           transaction.tx = tx;
           transaction.boxes = boxes;
           transaction.dataBoxes = dataBoxes ? dataBoxes : [];
           transaction.resolve = resolve;
           transaction.reject = reject;
           transaction.requiredSigner = requiredSign;
-          this.generateCommitment(tx.unsigned_tx().id().to_str());
           release();
+          await this.generateCommitment(tx.unsigned_tx().id().to_str());
         })
         .catch((e) => {
           this.logger.error(`Error in signing MultiSig transaction: ${e}`);
