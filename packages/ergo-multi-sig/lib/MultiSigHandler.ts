@@ -378,7 +378,6 @@ export class MultiSigHandler extends Communicator {
               `All commitments received for tx [${payload.txId}]. Initiating sign...`,
             );
 
-            release();
             await this.sendMessage(
               MessageType.InitiateSign,
               signPayload,

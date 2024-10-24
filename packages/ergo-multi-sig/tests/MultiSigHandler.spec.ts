@@ -559,15 +559,14 @@ describe('MultiSigHandler', () => {
       );
       await Promise.all(
         handlers.map((handler) => {
-          return handler.generateCommitment(
-            reduced.unsigned_tx().id().to_str(),
-          );
+          return handler.sign(reduced, requiredSings, boxes, dataBoxes);
         }),
       );
       const turnHandler = handlers[0];
       const { transaction, release } = await turnHandler.getQueuedTransaction(
         reduced.unsigned_tx().id().to_str(),
       );
+
       expect(transaction.coordinator).toEqual(-1);
     });
   });

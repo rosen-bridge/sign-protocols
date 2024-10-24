@@ -32,8 +32,9 @@ export class SenderSimulated {
     await Promise.all(
       toSend.map((id) => {
         const handler = this.idToHandler[id];
+        const msgJson = JSON.parse(msg);
         if (handler) {
-          return handler.handleMessage(msg, id);
+          return handler.handleMessage(msg, testPubs[msgJson.index]);
         }
       }),
     );
