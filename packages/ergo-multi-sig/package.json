@@ -32,7 +32,7 @@
     "vitest": "^1.2.2"
   },
   "dependencies": {
-    "@rosen-bridge/abstract-logger": "^1.0.0",
+    "@rosen-bridge/abstract-logger": "^2.0.1",
     "@rosen-bridge/detection": "^0.1.0",
     "@rosen-bridge/encryption": "^0.1.0",
     "@rosen-bridge/communication": "^0.1.0",
