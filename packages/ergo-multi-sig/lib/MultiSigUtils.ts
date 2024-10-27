@@ -372,23 +372,6 @@ export class MultiSigUtils {
   };
 
   /**
-   * verify that if selected guard sign message or not
-   * @param signBase64 signed string encoded as base64
-   * @param pub guard's public key
-   * @param data signed data
-   */
-  static verifySignature = async (
-    signBase64: string,
-    pub: string,
-    data: string,
-    encryption: ECDSA,
-  ): Promise<boolean> => {
-    const signature = Buffer.from(signBase64, 'base64');
-    const res = await encryption.verify(data, signature.toString('hex'), pub);
-    return res;
-  };
-
-  /**
    * get empty prover
    */
   static getEmptyProver = (): wasm.Wallet => {
