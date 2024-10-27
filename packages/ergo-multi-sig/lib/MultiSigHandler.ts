@@ -1,15 +1,14 @@
 import * as wasm from 'ergo-lib-wasm-nodejs';
 import {
   CommitmentPayload,
-  CommunicationMessage,
   ErgoMultiSigConfig,
   GenerateCommitmentPayload,
   InitiateSignPayload,
+  MessageType,
   SignedTxPayload,
   Signer,
   SignPayload,
   TxQueued,
-  MessageType,
 } from './types';
 import { turnTime } from './const';
 import { Semaphore } from 'await-semaphore';
@@ -21,7 +20,6 @@ import { Communicator } from '@rosen-bridge/communication';
 
 export class MultiSigHandler extends Communicator {
   protected logger: AbstractLogger;
-  private readonly getPeerId: () => Promise<string>;
   private readonly multiSigUtilsInstance: MultiSigUtils;
   private readonly transactions: Map<string, TxQueued>;
   private readonly secret: Uint8Array;
@@ -30,7 +28,6 @@ export class MultiSigHandler extends Communicator {
   private semaphore = new Semaphore(1);
   private guardDetection: GuardDetection;
   private publicKey?: string;
-  private encryption: ECDSA;
   private guardsPk: Array<string>;
 
   constructor(config: ErgoMultiSigConfig) {
@@ -46,10 +43,8 @@ export class MultiSigHandler extends Communicator {
     this.secret = Buffer.from(config.secretHex, 'hex');
     this.txSignTimeout = config.txSignTimeout;
     this.multiSigUtilsInstance = config.multiSigUtilsInstance;
-    this.getPeerId = config.getPeerId;
     this.guardsPk = config.guardsPk;
     this.guardDetection = config.guardDetection;
-    this.encryption = new ECDSA(config.secretHex);
   }
 
   /**

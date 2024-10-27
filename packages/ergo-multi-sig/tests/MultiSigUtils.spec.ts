@@ -6,8 +6,8 @@ import {
   getOutBoxJs,
   jsToReducedTx,
 } from './testUtils/txUtils';
-import { ErgoBox } from 'ergo-lib-wasm-nodejs';
 import * as wasm from 'ergo-lib-wasm-nodejs';
+import { ErgoBox } from 'ergo-lib-wasm-nodejs';
 import fs from 'fs';
 import path from 'path';
 import { mockedErgoStateContext } from '@rosen-bridge/ergo-multi-sig/tests/testData';

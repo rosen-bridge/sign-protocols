@@ -1,10 +1,5 @@
 import * as wasm from 'ergo-lib-wasm-nodejs';
-import {
-  ErgoBox,
-  ErgoBoxes,
-  ReducedTransaction,
-  TransactionHintsBag,
-} from 'ergo-lib-wasm-nodejs';
+import { ErgoBox, ErgoBoxes, TransactionHintsBag } from 'ergo-lib-wasm-nodejs';
 import {
   CommitmentJson,
   PublishedCommitment,

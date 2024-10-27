@@ -47,7 +47,6 @@ class TestUtils {
       txSignTimeout: TestConfigs.txSignTimeout,
       multiSigFirstSignDelay: TestConfigs.multiSigFirstSignDelay,
       submit: submit,
-      getPeerId: () => Promise.resolve(testPubs[secretInd]),
       guardDetection: guardDetection,
       guardsPk: pubKeys,
     });
