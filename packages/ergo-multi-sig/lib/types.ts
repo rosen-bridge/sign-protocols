@@ -52,22 +52,6 @@ interface TxQueued {
   coordinator: number;
 }
 
-interface GeneralPayload {
-  index?: number;
-  id?: string;
-}
-
-interface RegisterPayload extends GeneralPayload {
-  nonce: string;
-  myId: string;
-}
-
-interface ApprovePayload extends GeneralPayload {
-  nonce: string;
-  nonceToSign?: string;
-  myId: string;
-}
-
 interface SingleCommitment {
   a: string;
   position: string;
@@ -86,12 +70,12 @@ interface PublishedProof {
   [index: string]: Array<SingleProof>;
 }
 
-interface CommitmentPayload extends GeneralPayload {
+interface CommitmentPayload {
   txId: string;
   commitment: PublishedCommitment;
 }
 
-interface InitiateSignPayload extends GeneralPayload {
+interface InitiateSignPayload {
   txId: string;
   committedInds: Array<number>;
   cmts: Array<PublishedCommitment>;
@@ -99,41 +83,25 @@ interface InitiateSignPayload extends GeneralPayload {
   simulatedProofs: Array<PublishedProof>;
 }
 
-interface SignPayload extends GeneralPayload {
+interface SignPayload {
   proof: PublishedProof;
   txId: string;
 }
 
-interface SignedTxPayload extends GeneralPayload {
+interface SignedTxPayload {
   txBytes: string;
 }
 
-interface GenerateCommitmentPayload extends GeneralPayload {
+interface GenerateCommitmentPayload {
   txId: string;
 }
 
-type Payload =
-  | RegisterPayload
-  | ApprovePayload
-  | CommitmentPayload
-  | InitiateSignPayload
-  | SignPayload
-  | SignedTxPayload
-  | GenerateCommitmentPayload;
-
-// Add this enum to the file
 export enum MessageType {
   GenerateCommitment = 'generateCommitment',
   Commitment = 'commitment',
   InitiateSign = 'initiateSign',
   Sign = 'sign',
   SignedTx = 'signedTx',
-}
-
-interface CommunicationMessage {
-  type: MessageType;
-  sign?: string;
-  payload: Payload;
 }
 
 interface ErgoMultiSigConfig {
@@ -149,12 +117,9 @@ interface ErgoMultiSigConfig {
 
 export {
   TxQueued,
-  CommunicationMessage,
-  RegisterPayload,
   CommitmentPayload,
   SignPayload,
   Signer,
-  ApprovePayload,
   CommitmentJson,
   PublishedCommitment,
   SingleCommitment,
