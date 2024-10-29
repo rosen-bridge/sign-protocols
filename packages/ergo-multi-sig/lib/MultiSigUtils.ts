@@ -7,7 +7,6 @@ import {
   SingleCommitment,
 } from './types';
 import { CHALLENGE_LEN } from './const';
-import { ECDSA } from '@rosen-bridge/encryption';
 
 export class MultiSigUtils {
   getStateContext: () => Promise<wasm.ErgoStateContext>;
@@ -18,7 +17,7 @@ export class MultiSigUtils {
 
   /**
    * gets public keys hex string and convert them to the Propositions
-   * @param pubKeys
+   * @param pubKeys public keys
    */
   static publicKeyToProposition = (
     pubKeys: Array<string>,
@@ -34,11 +33,11 @@ export class MultiSigUtils {
 
   /**
    * extracted hints for a transaction
-   * @param tx
-   * @param boxes
-   * @param dataBoxes
-   * @param signed
-   * @param simulated
+   * @param tx transaction
+   * @param boxes boxes
+   * @param dataBoxes data boxes
+   * @param signed signed public keys
+   * @param simulated simulated public keys
    */
   extract_hints = async (
     tx: wasm.Transaction,
@@ -68,9 +67,9 @@ export class MultiSigUtils {
 
   /**
    * adding hints to a transaction hints bag
-   * @param currentHints
-   * @param newHints
-   * @param tx
+   * @param currentHints current hints bag
+   * @param newHints new hints bag
+   * @param inputLen input length of the transaction
    */
   static add_hints = (
     currentHints: wasm.TransactionHintsBag,
@@ -161,7 +160,7 @@ export class MultiSigUtils {
    * coverts published proofs to hint bag
    * @param publishedProofs published proofs
    * @param pubKeys public keys with correct order
-   * @param tx transaction
+   * @param inputLen input length of the transaction
    * @param type proof type: simulated or real
    */
   static publishedProofsToHintBag(
@@ -186,7 +185,7 @@ export class MultiSigUtils {
    * converting published commitments to hints bag
    * @param publishedCommitments published commitments
    * @param pubKeys public keys with correct order
-   * @param tx transaction
+   * @param inputLen input length of the transaction
    * @param type commitment type: simulated or real
    */
   static publishedCommitmentsToHintBag(
@@ -209,9 +208,9 @@ export class MultiSigUtils {
 
   /**
    * compare two list of published commitment and verify to be equal.
-   * @param item1
-   * @param item2
-   * @param inputLength
+   * @param item1 published commitments
+   * @param item2 published commitments
+   * @param inputLength input length of the transaction
    */
   static comparePublishedCommitmentsToBeDiffer = (
     item1: PublishedCommitment,
@@ -245,8 +244,8 @@ export class MultiSigUtils {
 
   /**
    * compare two single commitments to be equals
-   * @param item1
-   * @param item2
+   * @param item1 single commitments
+   * @param item2 single commitments
    */
   static compareSingleInputCommitmentsAreEquals = (
     item1: Array<SingleCommitment>,

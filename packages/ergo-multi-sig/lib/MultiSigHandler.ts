@@ -719,7 +719,7 @@ export class MultiSigHandler extends Communicator {
    * @param type message type
    * @param payload message payload
    * @param signature message signature
-   * @param senderIndex sender's index
+   * @param index sender's index
    * @param peerId the sender's peer id
    * @param timestamp message timestamp
    */
