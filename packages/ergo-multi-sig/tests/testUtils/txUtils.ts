@@ -105,7 +105,7 @@ function jsToCandidate(out: ErgoBoxJs, height: number): ErgoBoxCandidate {
 /**
  * Converts a JS object to a ErgoBoxCandidate
  * @param tree ErgoTree of the box
- * @param willGet [tokenId, amount] of the box
+ * @param willGet
  */
 function getOutBoxJs(tree: string, willGet: [string, number]): ErgoBoxJs {
   let ergVal = Number(process.env.MIN_ERG);
@@ -121,25 +121,6 @@ function getOutBoxJs(tree: string, willGet: [string, number]): ErgoBoxJs {
   if (willGet[0].length > 10 && willGet[1] > 0)
     out.assets = [{ tokenId: willGet[0], amount: willGet[1] }];
   return out;
-}
-
-/**
- * Converts a JS object to a ErgoBoxCandidate
- * @param tree ErgoTree of the box
- * @param willGet [tokenId, amount] of the box
- */
-function getOutBox(tree: string, willGet: [string, number]): ErgoBoxCandidate {
-  let ergVal = Number(process.env.MIN_ERG);
-  if (willGet[0].length <= 10) ergVal = willGet[1];
-
-  const out: ErgoBoxJs = {
-    value: ergVal,
-    ergoTree: tree,
-  };
-
-  if (willGet[0].length > 10 && willGet[1] > 0)
-    out.assets = [{ tokenId: willGet[0], amount: willGet[1] }];
-  return jsToCandidate(out, 0);
 }
 
 /**
@@ -280,7 +261,6 @@ export {
   addressToContract,
   jsToCandidate,
   getOutBoxJs,
-  getOutBox,
   jsToUnsignedTx,
   getChangeBoxJs,
   jsToReducedTx,

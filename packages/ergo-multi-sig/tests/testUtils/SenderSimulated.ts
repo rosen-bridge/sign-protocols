@@ -7,12 +7,8 @@ export class SenderSimulated {
   /**
    * sets the handlers
    * @param handlers MultiSigHandlers
-   * @param pubs public keys of the handlers
    */
-  changeHandlers = async (
-    handlers: Array<MultiSigHandler>,
-    pubs: Array<string>,
-  ) => {
+  changeHandlers = async (handlers: Array<MultiSigHandler>) => {
     handlers.forEach((handler) => {
       const pk = handler.getPk();
       this.idToHandler[pk] = handler;

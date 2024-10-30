@@ -12,25 +12,6 @@ import fs from 'fs';
 import path from 'path';
 import { mockedErgoStateContext } from '@rosen-bridge/ergo-multi-sig/tests/testData';
 
-const fee = 1000000;
-const tree =
-  '0008cd03e5bedab3f782ef17a73e9bdc41ee0e18c3ab477400f35bcf7caa54171db7ff36';
-const out = getOutBoxJs(tree, ['ERG', 10000000]);
-const ins = [boxJs];
-const dataBoxes: any = [];
-const change = getChangeBoxJs(ins, [out], tree, fee);
-const reduced = jsToReducedTx(ins, [out, change], dataBoxes, 1311604, fee);
-const requiredSings = 6;
-const boxes = ins.map((i: any) => ErgoBox.from_json(JSON.stringify(i)));
-
-const senderMock = (expectedType: string, expectedPayload: any) => {
-  return async (msg: string, peers: string[]) => {
-    const msgJson = JSON.parse(msg);
-    expect(msgJson.type).toEqual(expectedType);
-    expect(msgJson.payload).toEqual(expectedPayload);
-  };
-};
-
 describe('MultiSigUtils', () => {
   describe('publicKeyToProposition', () => {
     /**

@@ -309,7 +309,7 @@ describe('MultiSigHandler', () => {
         testPubs,
       );
       await TestUtils.addTx(handler, reduced, requiredSings, boxes, dataBoxes);
-      handler.generateCommitment(reduced.unsigned_tx().id().to_str());
+      await handler.generateCommitment(reduced.unsigned_tx().id().to_str());
       const { transaction, release } = await handler.getQueuedTransaction(
         reduced.unsigned_tx().id().to_str(),
       );
@@ -474,7 +474,7 @@ describe('MultiSigHandler', () => {
         ),
       );
       const handlers = allHandlers.slice(0, 3);
-      await simulatedSender.changeHandlers(handlers, testPubs);
+      await simulatedSender.changeHandlers(handlers);
       vi.setSystemTime(0);
       await Promise.all(
         handlers.map((handler) => {
@@ -525,7 +525,7 @@ describe('MultiSigHandler', () => {
           ),
         ),
       );
-      simulatedSender.changeHandlers(handlers, testPubs);
+      await simulatedSender.changeHandlers(handlers);
       vi.setSystemTime(0);
       await Promise.all(
         handlers.map((handler) => {
@@ -657,12 +657,6 @@ describe('MultiSigHandler', () => {
       const sender = vi.fn();
       vi.spyOn(handler as any, 'sendMessage').mockImplementation(sender);
       await handler.handleMyTurn();
-      // expect(sender).toHaveBeenLastCalledWith({
-      //   type: 'generateCommitment',
-      //   payload: {
-      //     txId: reduced.unsigned_tx().id().to_str(),
-      //   },
-      // });
       expect(sender).toHaveBeenLastCalledWith(
         'generateCommitment',
         { txId: reduced.unsigned_tx().id().to_str() },
