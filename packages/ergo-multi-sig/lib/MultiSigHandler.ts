@@ -1,106 +1,166 @@
 import * as wasm from 'ergo-lib-wasm-nodejs';
 import {
-  ApprovePayload,
-  CommitmentJson,
   CommitmentPayload,
-  CommunicationMessage,
   ErgoMultiSigConfig,
-  RegisterPayload,
+  GenerateCommitmentPayload,
+  InitiateSignPayload,
+  MessageType,
+  SignedTxPayload,
   Signer,
   SignPayload,
   TxQueued,
 } from './types';
-import { multiSigFirstSignDelay } from './const';
-import * as crypto from 'crypto';
-import { shuffle } from 'lodash-es';
+import { turnTime } from './const';
 import { Semaphore } from 'await-semaphore';
-import Encryption from './utils/Encryption';
+import { ECDSA } from '@rosen-bridge/encryption';
 import { MultiSigUtils } from './MultiSigUtils';
-import { CommitmentMisMatch } from './utils/errors';
 import { AbstractLogger, DummyLogger } from '@rosen-bridge/abstract-logger';
+import { ActiveGuard, GuardDetection } from '@rosen-bridge/detection';
+import { Communicator } from '@rosen-bridge/communication';
 
-export class MultiSigHandler {
+export class MultiSigHandler extends Communicator {
   protected logger: AbstractLogger;
-  private readonly submitMessage: (
-    msg: string,
-    peers: Array<string>,
-  ) => unknown;
-  private readonly getPeerId: () => Promise<string>;
   private readonly multiSigUtilsInstance: MultiSigUtils;
   private readonly transactions: Map<string, TxQueued>;
-  private peers: Array<Signer>;
   private readonly secret: Uint8Array;
-  private nonce?: string;
   private readonly txSignTimeout: number;
-  private readonly multiSigFirstSignDelay: number;
   private prover?: wasm.Wallet;
-  private index?: number;
   private semaphore = new Semaphore(1);
+  private guardDetection: GuardDetection;
+  private publicKey?: string;
+  private guardsPk: Array<string>;
 
   constructor(config: ErgoMultiSigConfig) {
+    super(
+      config.logger ? config.logger : new DummyLogger(),
+      new ECDSA(config.secretHex),
+      config.submit,
+      config.guardsPk,
+    );
+
     this.logger = config.logger ? config.logger : new DummyLogger();
     this.transactions = new Map<string, TxQueued>();
-    this.peers = config.publicKeys.map((item) => ({
-      pub: item,
-      unapproved: [],
-    }));
     this.secret = Buffer.from(config.secretHex, 'hex');
     this.txSignTimeout = config.txSignTimeout;
-    this.multiSigFirstSignDelay =
-      config.multiSigFirstSignDelay ?? multiSigFirstSignDelay;
     this.multiSigUtilsInstance = config.multiSigUtilsInstance;
-    this.submitMessage = config.submit;
-    this.getPeerId = config.getPeerId;
+    this.guardsPk = config.guardsPk;
+    this.guardDetection = config.guardDetection;
   }
 
   /**
-   * sending register message to the network
+   * getting all peers without initializing IDs
    */
-  public sendRegister = async (): Promise<void> => {
-    this.nonce = crypto.randomBytes(32).toString('base64');
-    this.sendMessage({
-      type: 'register',
-      payload: {
-        nonce: this.nonce,
-        myId: await this.getPeerId(),
-      },
+  peers = (): Signer[] => {
+    return this.guardsPk.map((pub) => ({ pub }));
+  };
+
+  /**
+   * getting all peers with their IDs (if they are active, otherwise undefined)
+   */
+  peersWithIds = async (): Promise<Signer[]> => {
+    const activeGuards = await this.guardDetection.activeGuards();
+    return this.guardsPk.map((pub) => {
+      const guard = activeGuards.find((guard) => guard.publicKey === pub);
+      return { pub, id: guard?.peerId };
     });
+  };
+
+  /**
+   * getting the current turn index
+   */
+  public getCurrentTurnInd = (): number => {
+    // every turnTime the turn changes to the next guard
+    return Math.floor(new Date().getTime() / turnTime) % this.peers().length;
+  };
+
+  /**
+   * getting id for the guard with the current turn, undefined if not active
+   */
+  public getCurrentTurnId = async (): Promise<string | undefined> => {
+    try {
+      const activeGuards = await this.guardDetection.activeGuards();
+      const currentTurnPk = this.peers()[this.getCurrentTurnInd()].pub;
+      return activeGuards.filter(
+        (guard: ActiveGuard) => guard.publicKey === currentTurnPk,
+      )[0].peerId;
+    } catch (e) {
+      return undefined;
+    }
+  };
+
+  /**
+   * checks if it's this peer's turn to sign
+   */
+  public isMyTurn = async (): Promise<boolean> => {
+    return (await this.getIndex()) === this.getCurrentTurnInd();
   };
 
   /**
    * checks if peers initiated using guards public keys, throws error if not
    */
-  isPeersInitiated = (): void => {
-    if (this.peers.length === 0)
+  peersMustBeInitialized = (): void => {
+    if (this.peers().length === 0)
       throw Error(
         `Cannot proceed MultiSig action, public keys are not provided yet`,
       );
   };
 
-  /**
-   * getting the index of the guard
-   */
-  getIndex = (): number => {
-    if (this.index === undefined) {
-      const ergoTree = wasm.SecretKey.dlog_from_bytes(this.secret)
-        .get_address()
-        .to_ergo_tree()
-        .to_base16_bytes();
-      const publicKey = ergoTree.substring(ergoTree.length - 66);
-      this.index = this.peers
-        .map((peer, index) => [peer.pub, index])
-        .filter((row) => row[0] === publicKey)[0][1] as number;
-    }
-    if (this.index !== undefined) return this.index;
-    throw Error('Secret key does not match with any guard public keys');
+  private derivePublicKey = (): void => {
+    const secret = wasm.SecretKey.dlog_from_bytes(this.secret);
+    this.publicKey = Buffer.from(secret.get_address().content_bytes()).toString(
+      'hex',
+    );
   };
 
   /**
-   * begin to sign a multi-sig transaction.
-   * @param tx: reduced transaction for multi-sig transaction
-   * @param requiredSign: number of required signs
-   * @param boxes: input boxes for transaction
-   * @param dataBoxes: data input boxes for transaction
+   * getting this guard's public key
+   */
+  getPk = (): string => {
+    if (!this.publicKey) {
+      this.derivePublicKey();
+    }
+    if (!this.publicKey) {
+      throw Error('Cannot derive public key in MultiSig');
+    }
+    return this.publicKey;
+  };
+
+  /**
+   * get a transaction object from queued transactions.
+   * @param txId transaction id to get
+   */
+  getQueuedTransaction = (
+    txId: string,
+  ): Promise<{ transaction: TxQueued; release: () => void }> => {
+    return this.semaphore.acquire().then((release) => {
+      try {
+        const transaction = this.transactions.get(txId);
+        if (transaction) return { transaction, release };
+        const newTransaction: TxQueued = {
+          boxes: [],
+          dataBoxes: [],
+          signs: {},
+          commitments: {},
+          commitmentSigns: {},
+          createTime: new Date().getTime(),
+          requiredSigner: 0,
+          coordinator: -1,
+        };
+        this.transactions.set(txId, newTransaction);
+        return { transaction: newTransaction, release };
+      } catch (e) {
+        release();
+        throw e;
+      }
+    });
+  };
+
+  /**
+   * begin sign a multi-sig transaction.
+   * @param tx reduced transaction for multi-sig transaction
+   * @param requiredSign number of required signs
+   * @param boxes input boxes for transaction
+   * @param dataBoxes data input boxes for transaction
    */
   public sign = (
     tx: wasm.ReducedTransaction,
@@ -108,18 +168,18 @@ export class MultiSigHandler {
     boxes: Array<wasm.ErgoBox>,
     dataBoxes?: Array<wasm.ErgoBox>,
   ): Promise<wasm.Transaction> => {
-    this.isPeersInitiated();
+    this.peersMustBeInitialized();
     return new Promise<wasm.Transaction>((resolve, reject) => {
       this.getQueuedTransaction(tx.unsigned_tx().id().to_str())
-        .then(({ transaction, release }) => {
+        .then(async ({ transaction, release }) => {
           transaction.tx = tx;
           transaction.boxes = boxes;
           transaction.dataBoxes = dataBoxes ? dataBoxes : [];
           transaction.resolve = resolve;
           transaction.reject = reject;
           transaction.requiredSigner = requiredSign;
-          this.generateCommitment(tx.unsigned_tx().id().to_str());
           release();
+          await this.generateCommitment(tx.unsigned_tx().id().to_str());
         })
         .catch((e) => {
           this.logger.error(`Error in signing MultiSig transaction: ${e}`);
@@ -130,20 +190,488 @@ export class MultiSigHandler {
   };
 
   /**
-   * verify that if selected guard sign message or not
-   * @param signBase64: signed string encoded as base64
-   * @param guardIndex: signed guard index
-   * @param data: signed data
+   * getting prover that makes with guard secrets
    */
-  verifySign = (
-    signBase64: string,
-    guardIndex: number,
-    data: string,
-  ): boolean => {
-    const publicKey = Buffer.from(this.peers[guardIndex].pub, 'hex');
-    const signature = Buffer.from(signBase64, 'base64');
-    // verify signature
-    return Encryption.verify(data, signature, publicKey);
+  private getProver = (): wasm.Wallet => {
+    if (!this.prover) {
+      const secret = wasm.SecretKey.dlog_from_bytes(this.secret);
+      const secretKeys = new wasm.SecretKeys();
+      secretKeys.add(secret);
+      this.prover = wasm.Wallet.from_secrets(secretKeys);
+    }
+    if (this.prover) return this.prover;
+    throw Error('Cannot create prover in MultiSig');
+  };
+
+  /**
+   * generating commitment for transaction in the queue by id and send it to the peer with the correct turn
+   * @param txId transaction id to generate commitment for
+   */
+  generateCommitment = async (txId: string): Promise<void> => {
+    const currentTurn = this.getCurrentTurnInd();
+    const currentTurnId = await this.getCurrentTurnId();
+    if (currentTurnId === undefined) {
+      this.logger.warn(
+        `Cannot generate and send commitment for tx [${txId}] because the peer with the correct turn is not initialized yet.`,
+      );
+      return;
+    }
+
+    const transaction = this.transactions.get(txId);
+    if (transaction && transaction.tx) {
+      transaction.coordinator = currentTurn;
+
+      transaction.secret =
+        this.getProver().generate_commitments_for_reduced_transaction(
+          transaction.tx,
+        );
+
+      // publishable commitment
+      const myPub = this.getPk();
+      const publishCommitments = MultiSigUtils.toReducedPublishedCommitments(
+        transaction.secret,
+        myPub,
+      );
+      transaction.commitments[myPub] = publishCommitments;
+      this.logger.debug(
+        `Commitment generated for tx [${txId}]. Broadcasting to the peer with the correct turn (peer ID: ${currentTurnId})...`,
+      );
+      // don't send if it's my turn
+      if (!(await this.isMyTurn()))
+        await this.sendMessage(
+          MessageType.Commitment,
+          {
+            txId: txId,
+            commitment: publishCommitments,
+          },
+          [currentTurnId],
+          this.getDate(),
+        );
+    }
+  };
+
+  /**
+   * handle verified commitment message from other guards
+   * if enough commitments, it will initiate signing
+   * @param sender sender for this commitment
+   * @param payload user commitment
+   * @param signature signature for this commitment message
+   */
+  handleCommitment = async (
+    sender: string,
+    payload: CommitmentPayload,
+    signature: string,
+    index: number,
+  ): Promise<void> => {
+    if (!(await this.isMyTurn())) {
+      this.logger.debug(
+        `Received commitment from [${sender}] but it's not this guard's turn. Current turn: ${await this.getCurrentTurnId()}.`,
+      );
+      return;
+    }
+
+    if (payload.txId) {
+      const pub = this.peers()[index].pub;
+      const { transaction, release } = await this.getQueuedTransaction(
+        payload.txId,
+      );
+
+      if (transaction.tx === undefined || transaction.secret === undefined) {
+        this.logger.info(
+          `Received commitment for tx [${payload.txId}] but the transaction is not properly in the queue yet.`,
+        );
+        release();
+        return;
+      }
+
+      // if enough commitments, we do not need to process new commitments
+      const commits = Object.values(transaction.commitments);
+      if (commits.length < transaction.requiredSigner) {
+        try {
+          transaction.commitments[pub] = payload.commitment;
+          transaction.commitmentSigns[pub] = signature;
+
+          const myPub = this.getPk();
+
+          if (
+            Object.keys(transaction.commitments).length >=
+            transaction.requiredSigner
+          ) {
+            this.logger.info(`Tx [${payload.txId}] has enough commitments.`);
+
+            const willSignPubs = Object.keys(transaction.commitments);
+            const willSignInds = willSignPubs.map((pub) =>
+              this.peers()
+                .map((peer) => peer.pub)
+                .indexOf(pub),
+            );
+            const simulated = this.peers()
+              .filter((peer) => !willSignPubs.includes(peer.pub))
+              .map((peer) => peer.pub);
+
+            const inputLen = transaction.tx.unsigned_tx().inputs().len();
+            const hints = MultiSigUtils.publishedCommitmentsToHintBag(
+              Object.values(transaction.commitments),
+              willSignPubs,
+              inputLen,
+            );
+            const hintsCopy = wasm.TransactionHintsBag.from_json(
+              JSON.stringify(hints.to_json()),
+            );
+            const signedTxSim =
+              MultiSigUtils.getEmptyProver().sign_reduced_transaction_multi(
+                transaction.tx,
+                hintsCopy,
+              );
+
+            const simHints = await this.multiSigUtilsInstance.extract_hints(
+              signedTxSim,
+              transaction.boxes,
+              transaction.dataBoxes,
+              [],
+              simulated,
+            );
+            MultiSigUtils.add_hints(hints, simHints, inputLen);
+
+            transaction.simulatedBag = simHints;
+            const simHintsPublish =
+              MultiSigUtils.toReducedPublishedCommitmentsArray(
+                simHints,
+                simulated,
+              );
+            const simPublishedProofs =
+              MultiSigUtils.toReducedPublishedProofsArray(simHints, simulated);
+
+            MultiSigUtils.add_hints(hints, transaction.secret, inputLen);
+            const signedTx = this.getProver().sign_reduced_transaction_multi(
+              transaction.tx,
+              hints,
+            );
+
+            const myHint = await this.multiSigUtilsInstance.extract_hints(
+              signedTx,
+              transaction.boxes,
+              transaction.dataBoxes,
+              [myPub],
+              [],
+            );
+            transaction.signs[myPub] = MultiSigUtils.hintBagToPublishedProof(
+              myHint,
+              myPub,
+            );
+
+            const signPayload = {
+              txId: payload.txId,
+              committedInds: willSignInds,
+              cmts: Object.values(transaction.commitments),
+              simulated: simHintsPublish,
+              simulatedProofs: simPublishedProofs,
+            };
+
+            const toSendPeers: string[] = (await this.peersWithIds())
+              .filter((peer) => {
+                return Object.keys(transaction.commitments).includes(peer.pub);
+              })
+              .map((peer) => peer.id)
+              .filter((id): id is string => id !== undefined);
+
+            this.logger.info(
+              `All commitments received for tx [${payload.txId}]. Initiating sign...`,
+            );
+
+            await this.sendMessage(
+              MessageType.InitiateSign,
+              signPayload,
+              toSendPeers,
+              this.getDate(),
+            );
+          }
+        } catch (e) {
+          this.logger.warn(
+            `An unknown exception occurred while handling commitment from other peer: ${e}`,
+          );
+          if (e instanceof Error && e.stack) this.logger.warn(e.stack);
+        }
+      } else {
+        this.logger.debug(
+          `A new commitment has been received from [${sender}] for transaction [${payload.txId}] that has sufficient commitment.`,
+        );
+      }
+      release();
+    }
+  };
+
+  /**
+   * all peers partially sign the transaction and send the proof to the peer with the correct turn
+   * @param sender the peer who initiated the sign
+   * @param payload initiate sign payload
+   */
+  initiateSign = async (
+    sender: string,
+    payload: InitiateSignPayload,
+    index: number,
+  ): Promise<void> => {
+    const currentTurn = this.getCurrentTurnInd();
+    if (currentTurn !== index) {
+      this.logger.debug(
+        `Received initiate sign from [${sender}] but it's not that guard's turn. The correct turn is [${currentTurn}].`,
+      );
+      return;
+    }
+    try {
+      const { transaction, release } = await this.getQueuedTransaction(
+        payload.txId,
+      );
+      if (transaction.tx === undefined || transaction.secret === undefined) {
+        this.logger.info(
+          `Received initiate sign for tx [${payload.txId}] but the transaction is not properly in the queue yet.`,
+        );
+        release();
+        return;
+      }
+      this.logger.info(`Initiating sign for tx [${payload.txId}]...`);
+      const myPub = this.getPk();
+      const signed = payload.committedInds.map((ind) => this.peers()[ind].pub);
+      const simulated = this.peers()
+        .filter((peer) => !signed.includes(peer.pub))
+        .map((peer) => peer.pub);
+
+      const inputLen = transaction.tx.unsigned_tx().inputs().len();
+      const hints = wasm.TransactionHintsBag.empty();
+      const cmtHints = MultiSigUtils.publishedCommitmentsToHintBag(
+        payload.cmts,
+        signed,
+        inputLen,
+      );
+      MultiSigUtils.add_hints(hints, cmtHints, inputLen);
+
+      const simHints = MultiSigUtils.publishedCommitmentsToHintBag(
+        payload.simulated,
+        simulated,
+        inputLen,
+        'cmtSimulated',
+      );
+      MultiSigUtils.add_hints(hints, simHints, inputLen);
+
+      const simProofs = MultiSigUtils.publishedProofsToHintBag(
+        payload.simulatedProofs,
+        simulated,
+        inputLen,
+        'proofSimulated',
+      );
+      MultiSigUtils.add_hints(hints, simProofs, inputLen);
+
+      MultiSigUtils.add_hints(hints, transaction.secret, inputLen);
+
+      const partial = this.getProver().sign_reduced_transaction_multi(
+        transaction.tx,
+        hints,
+      );
+      const signer = [myPub];
+      const myHints = await this.multiSigUtilsInstance.extract_hints(
+        partial,
+        transaction.boxes,
+        transaction.dataBoxes,
+        signer,
+        [],
+      );
+      const proof = MultiSigUtils.hintBagToPublishedProof(myHints, myPub);
+
+      const signPayload = {
+        proof: proof,
+        txId: payload.txId,
+      };
+
+      release();
+      this.logger.info(
+        `Sending proof to [${sender}] for tx [${payload.txId}]...`,
+      );
+      await this.sendMessage(
+        MessageType.Sign,
+        signPayload,
+        [sender],
+        this.getDate(),
+      );
+    } catch (e) {
+      this.logger.warn(
+        `An unknown exception occurred while handling initiate sign from other peer: ${e}`,
+      );
+    }
+  };
+
+  /**
+   * the peer with the correct turn collects partial proofs and signs the transaction when all proofs are collected
+   * will send the signed transaction to all peers
+   * @param sender sender of the proof
+   * @param payload proof payload
+   */
+  handleSign = async (
+    sender: string,
+    payload: SignPayload,
+    index: number,
+  ): Promise<void> => {
+    try {
+      const { transaction, release } = await this.getQueuedTransaction(
+        payload.txId,
+      );
+      if (
+        transaction.tx === undefined ||
+        transaction.simulatedBag === undefined
+      ) {
+        this.logger.info(
+          `Received proof from [${sender}] for tx [${payload.txId}] but the transaction is not properly in the queue yet.`,
+        );
+        release();
+        return;
+      }
+      this.logger.debug(
+        `Received proof from [${sender}] for tx [${payload.txId}]...`,
+      );
+      const pub = this.peers()[index].pub;
+      transaction.signs[pub] = payload.proof;
+
+      if (Object.keys(transaction.signs).length >= transaction.requiredSigner) {
+        this.logger.info(
+          `All proofs received for tx [${payload.txId}]. Signing...`,
+        );
+
+        const inputLen = transaction.tx.unsigned_tx().inputs().len();
+        const allHints = wasm.TransactionHintsBag.empty();
+        const signedOrder = Object.keys(transaction.signs);
+        const signedProofs = signedOrder.map((key) => transaction.signs[key]);
+        const hintBag = MultiSigUtils.publishedProofsToHintBag(
+          signedProofs,
+          signedOrder,
+          inputLen,
+        );
+        MultiSigUtils.add_hints(allHints, hintBag, inputLen);
+
+        MultiSigUtils.add_hints(allHints, transaction.simulatedBag, inputLen);
+
+        const cmtHints = MultiSigUtils.publishedCommitmentsToHintBag(
+          Object.values(transaction.commitments),
+          Object.keys(transaction.commitments),
+          inputLen,
+        );
+        MultiSigUtils.add_hints(allHints, cmtHints, inputLen);
+
+        const signed =
+          MultiSigUtils.getEmptyProver().sign_reduced_transaction_multi(
+            transaction.tx,
+            allHints,
+          );
+        const txBytes = Buffer.from(signed.sigma_serialize_bytes()).toString(
+          'base64',
+        );
+        release();
+        await this.handleSignedTx(txBytes);
+
+        const txPayload = {
+          txBytes: txBytes,
+        };
+        const myPub = this.getPk();
+        const toSend: string[] = (await this.peersWithIds())
+          .filter((peer) => peer.pub !== myPub)
+          .map((peer) => peer.id)
+          .filter((id): id is string => id !== undefined);
+
+        await this.sendMessage(
+          MessageType.SignedTx,
+          txPayload,
+          toSend,
+          this.getDate(),
+        );
+      }
+
+      release();
+    } catch (e) {
+      this.logger.warn(
+        `An unknown exception occurred while handling initiate sign from other peer: ${e}`,
+      );
+    }
+  };
+
+  /**
+   * handles fully signed transaction
+   * checks if the transaction is valid and resolve the promise
+   * @param txBytes base64 encoded signed transaction
+   */
+  handleSignedTx = async (txBytes: string): Promise<void> => {
+    try {
+      const tx = wasm.Transaction.sigma_parse_bytes(
+        Buffer.from(txBytes, 'base64'),
+      );
+      const { transaction, release } = await this.getQueuedTransaction(
+        tx.id().to_str(),
+      );
+      const isTxValid = await this.multiSigUtilsInstance.verifyInput(
+        tx,
+        transaction.boxes,
+      );
+      this.logger.info(
+        `Received signed tx [${tx.id().to_str()}] and it is ${isTxValid ? 'valid' : 'invalid'}`,
+      );
+
+      if (isTxValid && transaction.resolve) transaction.resolve(tx);
+      if (!isTxValid && transaction.reject)
+        transaction.reject(`Signed transaction ${tx.id().to_str()} is invalid`);
+
+      release();
+      this.transactions.delete(tx.id().to_str());
+    } catch (e) {
+      this.logger.warn(
+        `An unknown exception occurred while handling signed transaction: ${e}`,
+      );
+    }
+  };
+
+  /**
+   * if it's this peer's turn, generate commitment for the transaction
+   * asks other peers to generate commitment
+   * @param txId
+   */
+  public handleMyTurnForTx = async (txId: string) => {
+    const transaction = this.transactions.get(txId);
+    if (!transaction) return;
+    transaction.simulatedBag = wasm.TransactionHintsBag.empty();
+    transaction.commitments = {};
+    transaction.commitmentSigns = {};
+    transaction.signs = {};
+    const myInd = await this.getIndex();
+
+    if ((await this.isMyTurn()) && transaction.coordinator !== myInd) {
+      this.logger.debug(
+        `Initiating sign for tx [${txId}] because it's this guards turn. The correct turn is [${await this.getCurrentTurnId()}]...`,
+      );
+      transaction.coordinator = myInd;
+      await this.generateCommitment(txId);
+      //   ask peers to generate commitment
+      await this.sendMessage(
+        MessageType.GenerateCommitment,
+        {
+          txId: txId,
+        },
+        await this.peersWithIds().then((peers) =>
+          peers
+            .map((peer) => peer.id)
+            .filter((id): id is string => id !== undefined),
+        ),
+        this.getDate(),
+      );
+    }
+  };
+
+  /**
+   * if it's this peer's turn, handle all transactions in the queue for potential signing
+   */
+  public handleMyTurn = async () => {
+    if (!(await this.isMyTurn())) return;
+    this.logger.debug(
+      `Handling my turn for all transactions in the queue. Current turn: ${await this.getCurrentTurnId()}...`,
+    );
+    for (const txId of this.transactions.keys()) {
+      await this.handleMyTurnForTx(txId);
+    }
   };
 
   /**
@@ -154,16 +682,15 @@ export class MultiSigHandler {
     let cleanedTransactionCount = 0;
     this.semaphore.acquire().then((release) => {
       try {
-        for (const [key, transaction] of this.transactions.entries()) {
+        for (const [key, transaction] of Array.from(this.transactions)) {
           if (
             transaction.createTime <
-            new Date().getTime() - this.txSignTimeout * 1000 // milliseconds
+            new Date().getTime() - this.txSignTimeout * 1000
           ) {
+            // milliseconds
             if (transaction.tx) {
               this.logger.debug(
-                `Tx [${transaction.tx
-                  .unsigned_tx()
-                  .id()}] got timeout in MultiSig signing process`,
+                `Tx [${transaction.tx.unsigned_tx().id()}] got timeout in MultiSig signing process`,
               );
             }
             if (transaction.reject) {
@@ -179,7 +706,6 @@ export class MultiSigHandler {
         this.logger.error(
           `An error occurred while removing unsigned transactions from MultiSig queue: ${e}`,
         );
-        if (e instanceof Error && e.stack) this.logger.error(e.stack);
         throw e;
       }
       this.logger.info(`MultiSig queue cleaned up`, {
@@ -189,693 +715,48 @@ export class MultiSigHandler {
   };
 
   /**
-   * getting prover that makes with guard secrets
+   * Process new message from other guards.
+   * @param type message type
+   * @param payload message payload
+   * @param signature message signature
+   * @param index sender's index
+   * @param peerId the sender's peer id
+   * @param timestamp message timestamp
    */
-  getProver = (): wasm.Wallet => {
-    if (!this.prover) {
-      const secret = wasm.SecretKey.dlog_from_bytes(this.secret);
-      const secretKeys = new wasm.SecretKeys();
-      secretKeys.add(secret);
-      this.prover = wasm.Wallet.from_secrets(secretKeys);
-    }
-    if (this.prover) return this.prover;
-    throw Error('Cannot create prover in MultiSig');
-  };
-
-  /**
-   * checks index of the tx is valid
-   * @param index
-   */
-  verifyIndex = (index: number): boolean => {
-    return index >= 0 && index < this.peers.length;
-  };
-
-  /**
-   * generating commitment for transaction in the queue by id
-   * @param id
-   */
-  generateCommitment = (id: string): void => {
-    const queued = this.transactions.get(id);
-    if (queued && !queued.secret && queued.tx) {
-      queued.secret =
-        this.getProver().generate_commitments_for_reduced_transaction(
-          queued.tx,
-        );
-      // publish commitment
-      const commitmentJson: CommitmentJson =
-        queued.secret.to_json() as CommitmentJson;
-      const publishCommitments =
-        MultiSigUtils.generatedCommitmentToPublishCommitment(commitmentJson);
-      this.logger.debug(
-        `Commitment generated for tx [${id}]. Broadcasting to approved peers...`,
-      );
-      this.sendMessage(
-        {
-          type: 'commitment',
-          payload: {
-            txId: id,
-            commitment: publishCommitments,
-          },
-        },
-        this.peers
-          .map((item) => (item.id ? item.id : ''))
-          .filter((item) => item !== ''),
-      );
-    }
-  };
-
-  /**
-   * process resolve transaction and call callback function
-   * @param transaction
-   */
-  processResolve = async (transaction: TxQueued) => {
-    if (
-      transaction.sign &&
-      transaction.sign.signed.length >= transaction.requiredSigner &&
-      transaction.sign.transaction
-    ) {
-      // verify transaction signed
-      const signed = wasm.Transaction.sigma_parse_bytes(
-        transaction.sign.transaction,
-      );
-      const context = await this.multiSigUtilsInstance.getStateContext();
-      const boxes = wasm.ErgoBoxes.empty();
-      const dataBoxes = wasm.ErgoBoxes.empty();
-      transaction.boxes.forEach((item) => boxes.add(item));
-      transaction.dataBoxes.forEach((item) => dataBoxes.add(item));
-      let rejected = false;
-      const inputs = signed.inputs();
-      for (let index = 0; index < inputs.len(); index++) {
-        if (
-          !wasm.verify_tx_input_proof(index, context, signed, boxes, dataBoxes)
-        ) {
-          rejected = true;
-          break;
-        }
-      }
-      const resolution = (tx: wasm.Transaction) => {
-        let warnMethod = '';
-        if (rejected) {
-          if (transaction.reject) {
-            transaction.reject(
-              `Tx [${tx
-                .id()
-                .to_str()}] got invalid sign. rejected to sign it again`,
-            );
-          } else {
-            warnMethod = 'reject';
-          }
-        } else {
-          this.logger.debug(`Tx [${tx.id().to_str()}] got full-signed`);
-          if (transaction.resolve) {
-            transaction.resolve(tx);
-          } else {
-            warnMethod = 'resolve';
-          }
-        }
-        if (warnMethod) {
-          this.logger.warn(
-            `No ${warnMethod} method for transaction [${transaction}]`,
-          );
-        }
-      };
-      resolution(signed);
-      // remove transaction from queue
-      transaction.tx = undefined;
-      transaction.sign = undefined;
-      transaction.reject = undefined;
-      transaction.resolve = undefined;
-      this.transactions.delete(signed.id().to_str());
-    }
-  };
-
-  /**
-   * generateSign calling with specific delay
-   * @param id
-   */
-  delayedGenerateSign = (id: string): void => {
-    setTimeout(async () => {
-      await this.getQueuedTransaction(id).then(
-        async ({ transaction, release }) => {
-          try {
-            this.logger.debug(`Starting signing Tx [${id}]`);
-            await this.generateSign(id, transaction);
-            await this.processResolve(transaction);
-          } catch (e) {
-            this.logger.warn(
-              `An unknown exception occurred while generating delayed sign for transaction [${id}] with error: ${e}`,
-            );
-            if (e instanceof Error && e.stack) this.logger.warn(e.stack);
-          }
-          release();
-        },
-      );
-    }, this.multiSigFirstSignDelay * 1000);
-  };
-
-  /**
-   * generating sign for transaction in the queue by the id of the transaction
-   * @param id
-   * @param transaction
-   */
-  generateSign = async (id: string, transaction: TxQueued): Promise<void> => {
-    const prover = this.getProver();
-    let needSign = false;
-    if (transaction.tx && transaction.secret) {
-      const myPub = this.peers[this.getIndex()].pub;
-      let signed: Array<string>;
-      let simulated: Array<string> = [];
-      let hints: wasm.TransactionHintsBag = wasm.TransactionHintsBag.empty();
-      if (transaction.sign) {
-        simulated = transaction.sign.simulated;
-        signed = transaction.sign.signed;
-        if (signed.indexOf(myPub) === -1) {
-          this.logger.debug(
-            `Continuing sign for tx [${transaction.tx.unsigned_tx().id()}]`,
-          );
-          hints = await this.multiSigUtilsInstance.extract_hints(
-            wasm.Transaction.sigma_parse_bytes(transaction.sign.transaction),
-            transaction.boxes,
-            transaction.dataBoxes,
-            signed,
-            simulated,
-          );
-          signed = [myPub, ...signed];
-          needSign = true;
-        }
-      } else {
-        this.logger.debug(
-          `First sign for tx [${transaction.tx.unsigned_tx().id()}]`,
-        );
-        simulated = transaction.commitments
-          .map((item, index) => {
-            if (item === undefined) {
-              return this.peers[index].pub;
-            }
-            return '';
-          })
-          .filter((item) => !!item && item !== myPub);
-        // add extra simulated to list of simulated nodes. this is cause of sigma-rust bug
-        const committed = shuffle(
-          transaction.commitments
-            .map((item, index) => {
-              if (item !== undefined) {
-                return this.peers[index].pub;
-              }
-              return '';
-            })
-            .filter((item) => !!item && item !== myPub),
-        );
-        if (committed.length > transaction.requiredSigner - 1) {
-          simulated = [
-            ...simulated,
-            ...committed.slice(transaction.requiredSigner - 1),
-          ];
-        }
-        signed = [myPub];
-        needSign = true;
-      }
-      if (needSign) {
-        MultiSigUtils.add_hints(hints, transaction.secret, transaction.tx);
-        for (let index = 0; index < transaction.commitments.length; index++) {
-          const commitment = transaction.commitments[index];
-          if (commitment && this.peers.length > index) {
-            const peer = this.peers[index];
-            if (
-              signed.indexOf(this.peers[index].pub) === -1 &&
-              simulated.indexOf(this.peers[index].pub) === -1
-            ) {
-              const publicHints = MultiSigUtils.convertToHintBag(
-                commitment,
-                peer.pub,
-              );
-              MultiSigUtils.add_hints(hints, publicHints, transaction.tx);
-            }
-          }
-        }
-        try {
-          const signedTx = prover.sign_reduced_transaction_multi(
-            transaction.tx,
-            hints,
-          );
-          const txBytes = Buffer.from(signedTx.sigma_serialize_bytes());
-          // broadcast signed invalid transaction to all other
-          const payload: SignPayload = {
-            tx: txBytes.toString('base64'),
-            txId: signedTx.id().to_str(),
-            signed: signed,
-            simulated: simulated,
-            commitments: [],
-          };
-          const completed = signed.length >= transaction.requiredSigner;
-          if (!completed) {
-            transaction.commitments.map((item, index) => {
-              const commitment = transaction.commitments[index];
-              if (transaction.commitmentSigns[index] && commitment) {
-                payload.commitments.push({
-                  sign: transaction.commitmentSigns[index],
-                  index: index,
-                  commitment: commitment,
-                });
-              }
-            });
-            this.logger.debug(
-              `Tx [${transaction.tx
-                .unsigned_tx()
-                .id()}] got partially signed. Sending to non-simulated peers...`,
-            );
-          } else {
-            this.logger.debug(
-              `Tx [${transaction.tx
-                .unsigned_tx()
-                .id()}] got full-signed. Sending to everyone...`,
-            );
-          }
-          const peers = this.peers
-            .filter((item) => {
-              return simulated.indexOf(item.pub) === -1 || completed; // if transaction sign completed we broadcast transaction to all peers not only signers
-            })
-            .map((item) => (item.id ? item.id : ''))
-            .filter((item) => item !== '');
-          this.sendMessage({ type: 'sign', payload: payload }, peers);
-          transaction.sign = {
-            signed: signed,
-            simulated: simulated,
-            transaction: txBytes,
-          };
-        } catch (e) {
-          this.logger.warn(
-            `An error occurred during MultiSig generate sign: ${e}`,
-          );
-          if (e instanceof Error && e.stack) this.logger.warn(e.stack);
-        }
-      }
-    }
-  };
-
-  /**
-   * send a message to other guards. it can be sent to all guards or specific guard
-   * @param message message
-   * @param receivers if set we sent to this list of guards only. otherwise, broadcast it.
-   */
-  sendMessage = async (
-    message: CommunicationMessage,
-    receivers?: Array<string>,
+  public processMessage = async (
+    type: string,
+    payload: unknown,
+    signature: string,
+    index: number,
+    peerId: string,
+    timestamp: number,
   ): Promise<void> => {
-    const payload = message.payload;
-    payload.index = this.getIndex();
-    payload.id = await this.getPeerId();
-    const payloadStr = JSON.stringify(message.payload);
-    message.sign = Buffer.from(
-      Encryption.sign(payloadStr, Buffer.from(this.secret)),
-    ).toString('base64');
-    if (receivers && receivers.length) {
-      Promise.all(
-        receivers.map(async (receiver) =>
-          this.submitMessage(JSON.stringify(message), [receiver]),
-        ),
-      );
-    } else {
-      this.submitMessage(JSON.stringify(message), []);
-    }
-  };
-
-  /**
-   * handle verified register message from other guards
-   * @param sender
-   * @param payload
-   */
-  handleRegister = (sender: string, payload: RegisterPayload): void => {
-    if (payload.index !== undefined && this.verifyIndex(payload.index)) {
-      const peer = this.peers[payload.index];
-      const nonce = crypto.randomBytes(32).toString('base64');
-      peer.unapproved.push({ id: sender, challenge: nonce });
-      this.logger.debug(
-        `Peer [${sender}] claimed to be guard of index [${payload.index}]`,
-      );
-      this.getPeerId().then((peerId) => {
-        this.sendMessage(
-          {
-            type: 'approve',
-            sign: '',
-            payload: {
-              nonce: payload.nonce,
-              nonceToSign: nonce,
-              myId: peerId,
-            },
-          },
-          [sender],
+    this.peersMustBeInitialized();
+    switch (type) {
+      case MessageType.GenerateCommitment: {
+        await this.generateCommitment(
+          (payload as GenerateCommitmentPayload).txId,
         );
-      });
-    }
-  };
-
-  /**
-   * handle verified approve message from other guards
-   * @param sender
-   * @param payload
-   */
-  handleApprove = (sender: string, payload: ApprovePayload): void => {
-    if (
-      payload.index !== undefined &&
-      this.verifyIndex(payload.index) &&
-      sender === payload.myId
-    ) {
-      const nonce = payload.nonce;
-      const peer = this.peers[payload.index];
-      const unapproved = peer.unapproved.filter(
-        (item) => item.id === sender && item.challenge === nonce,
-      );
-      if (unapproved.length > 0) {
-        this.logger.debug(`Peer [${sender}] got approved`);
-        peer.id = sender;
-        peer.unapproved = peer.unapproved.filter(
-          (item) => unapproved.indexOf(item) === -1,
+        break;
+      }
+      case MessageType.Commitment:
+        await this.handleCommitment(
+          peerId,
+          payload as CommitmentPayload,
+          signature,
+          index,
         );
-      } else if (this.nonce == payload.nonce) {
-        this.logger.debug(
-          `Found peer [${sender}] as guard of index [${payload.index}]`,
-        );
-        peer.id = sender;
-      }
-      this.logger.debug(`Sending approval message to peer [${sender}] ...`);
-      this.getPeerId().then((peerId) => {
-        if (payload.nonceToSign) {
-          this.sendMessage(
-            {
-              type: 'approve',
-              sign: '',
-              payload: {
-                nonce: payload.nonceToSign,
-                myId: peerId,
-                nonceToSign: '',
-              },
-            },
-            [sender],
-          );
-        }
-      });
-    }
-  };
-
-  /**
-   * get a transaction object from queued transactions.
-   * @param txId
-   */
-  getQueuedTransaction = (
-    txId: string,
-  ): Promise<{ transaction: TxQueued; release: () => void }> => {
-    return this.semaphore.acquire().then((release) => {
-      try {
-        const transaction = this.transactions.get(txId);
-        if (transaction) {
-          return { transaction, release };
-        }
-        const newTransaction: TxQueued = {
-          boxes: [],
-          dataBoxes: [],
-          commitments: this.peers.map(() => undefined),
-          commitmentSigns: this.peers.map(() => ''),
-          createTime: new Date().getTime(),
-          requiredSigner: 0,
-        };
-        this.transactions.set(txId, newTransaction);
-        return { transaction: newTransaction, release };
-      } catch (e) {
-        release();
-        throw e;
-      }
-    });
-  };
-
-  /**
-   * handle verified commitment message from other guards
-   * @param sender: sender for this commitment
-   * @param payload: user commitment
-   * @param sign: signature for this commitment message
-   */
-  handleCommitment = async (
-    sender: string,
-    payload: CommitmentPayload,
-    sign: string,
-  ): Promise<void> => {
-    if (payload.index !== undefined && payload.txId) {
-      const index = payload.index;
-      const { transaction, release } = await this.getQueuedTransaction(
-        payload.txId,
-      );
-      // if transaction signing started we do not need to process new commitments
-      if (!transaction.sign) {
-        try {
-          transaction.commitments[index] = payload.commitment;
-          transaction.commitmentSigns[index] = sign;
-          if (transaction.requiredSigner > 0) {
-            if (
-              transaction.commitments.filter((item) => item !== undefined)
-                .length >=
-              transaction.requiredSigner - 1
-            ) {
-              this.logger.debug(
-                `Tx [${payload.txId}] has enough commitments. Signing Delayed for [${this.multiSigFirstSignDelay}] seconds...`,
-              );
-              this.delayedGenerateSign(payload.txId);
-            }
-          }
-        } catch (e) {
-          this.logger.warn(
-            `An unknown exception occurred while handling commitment from other peer: ${e}`,
-          );
-          if (e instanceof Error && e.stack) this.logger.warn(e.stack);
-        }
-      } else {
-        this.logger.debug(
-          'A new commitment has been received for a transaction that has sufficient commitment.',
-        );
-      }
-      release();
-    }
-  };
-
-  /**
-   * Verifying that Commitments in the payload are same with saved commitments
-   * and extracted commitment are same with commitments in the payload if there is
-   * a problem it throws CommitmentMisMatch Error
-   * @param transaction
-   * @param payload
-   */
-  verifySignedPayload = async (
-    transaction: TxQueued,
-    payload: SignPayload,
-  ): Promise<void> => {
-    const inputBoxLength = transaction.boxes.length;
-    const payloadTx = wasm.Transaction.sigma_parse_bytes(
-      Buffer.from(payload.tx, 'base64'),
-    );
-    const hints = await this.multiSigUtilsInstance.extract_hints(
-      payloadTx,
-      transaction.boxes,
-      transaction.dataBoxes,
-      payload.signed,
-      payload.simulated,
-    );
-    const myIndex = this.getIndex();
-    for (const payloadCommitment of payload.commitments) {
-      const guardIndex = payloadCommitment.index;
-      const guardPk = this.peers[guardIndex].pub;
-      const ownedCommitment = transaction.commitments.at(guardIndex);
-      if (guardIndex === myIndex && transaction.secret) {
-        const myCommitments =
-          MultiSigUtils.generatedCommitmentToPublishCommitment(
-            transaction.secret.to_json(),
-          );
-        if (
-          MultiSigUtils.comparePublishedCommitmentsToBeDiffer(
-            payloadCommitment.commitment,
-            myCommitments,
-            inputBoxLength,
-          )
-        ) {
-          throw new CommitmentMisMatch(
-            'Used commitment differ from my own commitments',
-          );
-        }
-      }
-      if (ownedCommitment) {
-        if (
-          MultiSigUtils.comparePublishedCommitmentsToBeDiffer(
-            payloadCommitment.commitment,
-            ownedCommitment,
-            inputBoxLength,
-          )
-        ) {
-          throw new CommitmentMisMatch(
-            'Saved Commitments are not same with transaction Commitments',
-          );
-        }
-      }
-      if (payload.signed.some((item) => item === guardPk)) {
-        // verify signed commitment to
-        const extractedCommitments =
-          MultiSigUtils.convertHintBagToPublishedCommitmentForGuard(
-            hints,
-            guardPk,
-            inputBoxLength,
-          );
-        if (
-          MultiSigUtils.comparePublishedCommitmentsToBeDiffer(
-            payloadCommitment.commitment,
-            extractedCommitments,
-            inputBoxLength,
-          )
-        ) {
-          throw new CommitmentMisMatch(
-            'Signed commitments are differ from passed commitments',
-          );
-        }
+        break;
+      case MessageType.InitiateSign:
+        await this.initiateSign(peerId, payload as InitiateSignPayload, index);
+        break;
+      case MessageType.Sign:
+        await this.handleSign(peerId, payload as SignPayload, index);
+        break;
+      case MessageType.SignedTx: {
+        await this.handleSignedTx((payload as SignedTxPayload).txBytes);
+        break;
       }
     }
-  };
-
-  /**
-   * handle verified sign message from other guards
-   * @param sender
-   * @param payload
-   */
-  handleSign = async (sender: string, payload: SignPayload): Promise<void> => {
-    if (payload.txId) {
-      const { transaction, release } = await this.getQueuedTransaction(
-        payload.txId,
-      );
-      try {
-        await this.verifySignedPayload(transaction, payload);
-        payload.commitments
-          .filter((commitment) => {
-            if (transaction.commitments[commitment.index] !== undefined) {
-              return false;
-            }
-            const payloadToSign = {
-              txId: payload.txId,
-              commitment: commitment.commitment,
-            };
-            return this.verifySign(
-              commitment.sign,
-              commitment.index,
-              JSON.stringify(payloadToSign),
-            );
-          })
-          .forEach((commitment) => {
-            transaction.commitments[commitment.index] = commitment.commitment;
-            transaction.commitmentSigns[commitment.index] = commitment.sign;
-          });
-        const guardsKeys = this.peers.map((item) => item.pub);
-        payload.signed = Array.from(new Set(payload.signed).values()).filter(
-          (item) => guardsKeys.indexOf(item) !== -1,
-        );
-        payload.simulated = Array.from(
-          new Set(payload.simulated).values(),
-        ).filter((item) => guardsKeys.indexOf(item) !== -1);
-        const myPub = this.peers[this.getIndex()].pub;
-        let updateSign = true;
-        if (
-          transaction.sign &&
-          payload.signed.filter((item) => item !== myPub).length <=
-            transaction.sign.signed.filter((item) => item !== myPub).length
-        ) {
-          updateSign = false;
-        }
-        if (updateSign) {
-          // Arrived transaction is better and has more signatures. store it.
-          transaction.sign = {
-            signed: payload.signed,
-            simulated: payload.simulated,
-            transaction: Uint8Array.from(Buffer.from(payload.tx, 'base64')),
-          };
-        }
-        if (
-          transaction.sign &&
-          transaction.sign.signed.indexOf(myPub) === -1 &&
-          transaction.sign.simulated.indexOf(myPub) === -1 &&
-          transaction.sign.signed.length < transaction.requiredSigner
-        ) {
-          await this.generateSign(payload.txId, transaction);
-        }
-        await this.processResolve(transaction);
-      } catch (e) {
-        this.logger.warn(
-          `An unknown exception occurred while handling sign from another peer: ${e}`,
-        );
-        if (e instanceof Error && e.stack) this.logger.warn(e.stack);
-      }
-      release();
-    }
-  };
-
-  /**
-   * handle new message from other guards. first verify message sign
-   * then if sign is valid pass to handler message according to message.type
-   * @param messageStr
-   * @param channel
-   * @param sender
-   */
-  public handleMessage = (
-    messageStr: string,
-    channel: string,
-    sender: string,
-  ): void => {
-    this.isPeersInitiated();
-    const message = JSON.parse(messageStr) as CommunicationMessage;
-    if (
-      message.payload.index !== undefined &&
-      message.payload.index >= 0 &&
-      message.payload.index < this.peers.length &&
-      message.payload.id &&
-      message.sign
-    ) {
-      if (sender !== message.payload.id) {
-        this.logger.warn(
-          `Received message from [${sender}] which using id [${message.payload.id}]`,
-        );
-        return;
-      }
-      const index = message.payload.index;
-      if (
-        this.verifySign(message.sign, index, JSON.stringify(message.payload))
-      ) {
-        switch (message.type) {
-          case 'register':
-            this.handleRegister(sender, message.payload as RegisterPayload);
-            break;
-          case 'approve':
-            this.handleApprove(sender, message.payload as ApprovePayload);
-            break;
-          case 'commitment':
-            this.handleCommitment(
-              sender,
-              message.payload as CommitmentPayload,
-              message.sign,
-            );
-            break;
-          case 'sign':
-            this.handleSign(sender, message.payload as SignPayload);
-            break;
-        }
-      } else {
-        this.logger.warn(
-          "Ignoring received message in MultiSig. Signature didn't verify",
-        );
-      }
-    }
-  };
-
-  /**
-   * Apply required changes after changes in public keys
-   * @param publicKeys new public keys
-   */
-  handlePublicKeysChange = (publicKeys: string[]) => {
-    this.peers = publicKeys.map((publicKey) => ({
-      pub: publicKey,
-      unapproved: [],
-    }));
-    this.sendRegister();
   };
 }

@@ -1,0 +1,116 @@
+{
+  "simHints": {
+    "secretHints": {
+      "0": [
+        {
+          "hint": "proofSimulated",
+          "pubkey": {
+            "op": "205",
+            "h": "02219e9dd9e7360cde44222c6b4a59fd4ee6b43f72a0dc20425451197f1c06a209"
+          },
+          "challenge": "a5ceb19ecec207343109083092cd24c13c8f029f2c191311",
+          "proof": "a5ceb19ecec207343109083092cd24c13c8f029f2c191311990303653b5e5e4d3f44b6f0d1f2035115da06e227dffc1ffdbe47ebeea12550",
+          "position": "0-0"
+        },
+        {
+          "hint": "proofSimulated",
+          "pubkey": {
+            "op": "205",
+            "h": "028d1cfbdc81c2a1575074ef761454cf6d8a339eecfa1b2afb052bfc2172e322e5"
+          },
+          "challenge": "2162419ac8da8884f62540c272a85fa304e94510dece23f8",
+          "proof": "2162419ac8da8884f62540c272a85fa304e94510dece23f86aa298b8659999d5e132b20d0691770193c4af5e7c9e70b96cf53be3b85da417",
+          "position": "0-1"
+        },
+        {
+          "hint": "proofSimulated",
+          "pubkey": {
+            "op": "205",
+            "h": "02965907f60c6b4cd33dde56c97387ff8653374e0c64c0ce6b0a65e78877afdc4d"
+          },
+          "challenge": "24221d235f2d953039582e4c5ae6ea72c0426df70d6c6fda",
+          "proof": "24221d235f2d953039582e4c5ae6ea72c0426df70d6c6fda9a1b91ba0a19afd183e36e6cc15b25dce391604268029bd04cf4023f5aed4718",
+          "position": "0-3"
+        },
+        {
+          "hint": "proofSimulated",
+          "pubkey": {
+            "op": "205",
+            "h": "03dabaa32b3b327c4239b8d3c78d40f7c0170a6a2ead79110b64a1b35f0951fe92"
+          },
+          "challenge": "1fc11d6c236b1b4417005af4dc31db86e5c6b72bf9d20719",
+          "proof": "1fc11d6c236b1b4417005af4dc31db86e5c6b72bf9d2071985623bbf45ea9f796a71f5f8e9afdc3b5dedcf94e6c92f75556a089d922e0adb",
+          "position": "0-9"
+        }
+      ]
+    },
+    "publicHints": {
+      "0": [
+        {
+          "hint": "cmtSimulated",
+          "pubkey": {
+            "op": "205",
+            "h": "02219e9dd9e7360cde44222c6b4a59fd4ee6b43f72a0dc20425451197f1c06a209"
+          },
+          "type": "dlog",
+          "a": "0352d56830a0e082af5470d345ca87186cff1b8b78fe82a1c66dbfe3f15840e0d0",
+          "position": "0-0"
+        },
+        {
+          "hint": "cmtSimulated",
+          "pubkey": {
+            "op": "205",
+            "h": "028d1cfbdc81c2a1575074ef761454cf6d8a339eecfa1b2afb052bfc2172e322e5"
+          },
+          "type": "dlog",
+          "a": "03a04de5fa28adb32d8018ea87013f534eec597082703e782f6864d28bfc053aa0",
+          "position": "0-1"
+        },
+        {
+          "hint": "cmtSimulated",
+          "pubkey": {
+            "op": "205",
+            "h": "02965907f60c6b4cd33dde56c97387ff8653374e0c64c0ce6b0a65e78877afdc4d"
+          },
+          "type": "dlog",
+          "a": "036d8536aa8c6ee058e39fc08d5ef79db5b93dda52bfefa1d10e583208017cbe6c",
+          "position": "0-3"
+        },
+        {
+          "hint": "cmtSimulated",
+          "pubkey": {
+            "op": "205",
+            "h": "03dabaa32b3b327c4239b8d3c78d40f7c0170a6a2ead79110b64a1b35f0951fe92"
+          },
+          "type": "dlog",
+          "a": "031772d59dac8b702c739c5656073feae82a9dfc80ca769b61dd10a73a5c77e265",
+          "position": "0-9"
+        }
+      ]
+    }
+  },
+  "inputs": {
+    "tx": "AacPSYvhewGBk8/j36j/PXHEGUGpOdR5ZlQLMbR/abueuAM7xAyNTC9DSkbhZMRwIsf5XhN0Kb3fQJwq+DJUAkkHWJ6nGJtIHPYzPltGBQ7wBTgeWAfF+VnPmlzQ3VuOnsv9qo+WSKqEK+HsrtKvqqmdlhMileE0gVLMa9UvEw9ooYlGBFot01QRKqa9PNUQ7Iw6nZ2J6Dra3N2ZAwNlO15eTT9EtvDR8gNRFdoG4iff/B/9vkfr7qElUGqimLhlmZnV4TKyDQaRdwGTxK9efJ5wuWz1O+O4XaQX+mY/LhoTTk0Kktjc7AEVFVr0PtAHjhh6QdX0GYh4v9CaG5G6Chmv0YPjbmzBWyXc45FgQmgCm9BM9AI/Wu1HGO+aKwrcJiJOcizmnZF0MoAU1dTLzVsklk0+/7LsrTlZgQAB/lS2+ZDtFnUD8lATZhAVkJP39/P/jyPi/3QhsP7gCfSYGoG7N13B27H9I+PY2Iy2+7hDvd8oT/LZkjp0pjZWwPxmK3O2KMMvQFC57aUkOonFYs6i5DMGV09MJXbzoFnp5L0PC6OHwZUzENNNxJjOI38X1WXxRuES1pOYYHmFYju/ReqfeWpx9fjpr9w7Xe3PlObJL3VVagidki4K2wAAAAOAreIEAAjNA+W+2rP3gu8Xpz6b3EHuDhjDq0d0APNbz3yqVBcdt/829IZQAADA0o9aAAjNA+W+2rP3gu8Xpz6b3EHuDhjDq0d0APNbz3yqVBcdt/829IZQAADAhD0QBQQABAAONhACBKALCM0Ceb5mfvncu6xVoGKVzocLBwKb/NstzijZWfKBWxb4F5jqAtGSo5qMx6cBcwBzARABAgQC0ZaDAwGTo4zHsqVzAAABk8KypXMBAHRzAnMDgwEIze6sk7GlcwT0hlAAAA==",
+    "reduced": "8QEBpw9Ji+F7AYGTz+PfqP89ccQZQak51HlmVAsxtH9pu54AAAAAA4Ct4gQACM0D5b7as/eC7xenPpvcQe4OGMOrR3QA81vPfKpUFx23/zb0hlAAAMDSj1oACM0D5b7as/eC7xenPpvcQe4OGMOrR3QA81vPfKpUFx23/zb0hlAAAMCEPRAFBAAEAA42EAIEoAsIzQJ5vmZ++dy7rFWgYpXOhwsHApv82y3OKNlZ8oFbFvgXmOoC0ZKjmozHpwFzAHMBEAECBALRloMDAZOjjMeypXMAAAGTwrKlcwEAdHMCcwODAQjN7qyTsaVzBPSGUAAAmAYKzQIhnp3Z5zYM3kQiLGtKWf1O5rQ/cqDcIEJUURl/HAaiCc0CjRz73IHCoVdQdO92FFTPbYoznuz6Gyr7BSv8IXLjIuXNApXjFGu7HKxb2fQYgb7OaUL4r4Ux/xdswq8TgTEK+WXkzQKWWQf2DGtM0z3eVslzh/+GUzdODGTAzmsKZeeId6/cTc0DIoK6/Hj1ZTB3lKuxyk6Oe+swqrW4udCxyNjqenTmCoDNA28Hf6CFJvASjHBKapjNySTnrdDIFBaaqq52yTX1Ga7mzQN/z5/NTBOmoVS57GHzuCPSz7yd3fDYoE85rhclQI44/s0Do8u1o9EBdnVjx5rzC4Ju6h8KAbaUzyXPOKe0L9YGMgvNA67rtNUtSMVgIcTSsUDvTspDCtNO1zARHIrXzC6KR4k1zQPauqMrOzJ8Qjm408eNQPfAFwpqLq15EQtkobNfCVH+kgAA",
+    "boxes": [
+      {
+        "boxId": "a70f498be17b018193cfe3dfa8ff3d71c41941a939d47966540b31b47f69bb9e",
+        "value": 200000000,
+        "ergoTree": "100b040c08cd02219e9dd9e7360cde44222c6b4a59fd4ee6b43f72a0dc20425451197f1c06a20908cd028d1cfbdc81c2a1575074ef761454cf6d8a339eecfa1b2afb052bfc2172e322e508cd0295e3146bbb1cac5bd9f41881bece6942f8af8531ff176cc2af1381310af965e408cd02965907f60c6b4cd33dde56c97387ff8653374e0c64c0ce6b0a65e78877afdc4d08cd032282bafc78f565307794abb1ca4e8e7beb30aab5b8b9d0b1c8d8ea7a74e60a8008cd036f077fa08526f0128c704a6a98cdc924e7add0c814169aaaae76c935f519aee608cd037fcf9fcd4c13a6a154b9ec61f3b823d2cfbc9dddf0d8a04f39ae1725408e38fe08cd03a3cbb5a3d101767563c79af30b826eea1f0a01b694cf25cf38a7b42fd606320b08cd03aeebb4d52d48c56021c4d2b140ef4eca430ad34ed730111c8ad7cc2e8a47893508cd03dabaa32b3b327c4239b8d3c78d40f7c0170a6a2ead79110b64a1b35f0951fe92987300830a08730173027303730473057306730773087309730a",
+        "assets": [],
+        "additionalRegisters": {},
+        "creationHeight": 1311603,
+        "transactionId": "d67d1616a7d85d0cc9e69fbf1a70c451f97c7f5b1ed30930f52ce1e5158dec7b",
+        "index": 0
+      }
+    ],
+    "dataBoxes": [],
+    "signedInputs": [],
+    "simulatedInputs": [
+      "028d1cfbdc81c2a1575074ef761454cf6d8a339eecfa1b2afb052bfc2172e322e5",
+      "02219e9dd9e7360cde44222c6b4a59fd4ee6b43f72a0dc20425451197f1c06a209",
+      "03dabaa32b3b327c4239b8d3c78d40f7c0170a6a2ead79110b64a1b35f0951fe92",
+      "02965907f60c6b4cd33dde56c97387ff8653374e0c64c0ce6b0a65e78877afdc4d"
+    ]
+  }
+}

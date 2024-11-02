@@ -1,0 +1,41 @@
+{
+  "cmts": {
+    "0": [
+      {
+        "a": "02fbb9f852d96872b72fe1d1b293b661923a4aa2dfbe37277942d1eba5a85b21d7",
+        "position": "0-4"
+      }
+    ]
+  },
+  "pub": "032282bafc78f565307794abb1ca4e8e7beb30aab5b8b9d0b1c8d8ea7a74e60a80",
+  "secret": {
+    "secretHints": {
+      "0": []
+    },
+    "publicHints": {
+      "0": [
+        {
+          "hint": "cmtReal",
+          "pubkey": {
+            "op": "205",
+            "h": "032282bafc78f565307794abb1ca4e8e7beb30aab5b8b9d0b1c8d8ea7a74e60a80"
+          },
+          "type": "dlog",
+          "a": "02fbb9f852d96872b72fe1d1b293b661923a4aa2dfbe37277942d1eba5a85b21d7",
+          "position": "0-4"
+        },
+        {
+          "hint": "cmtWithSecret",
+          "pubkey": {
+            "op": "205",
+            "h": "032282bafc78f565307794abb1ca4e8e7beb30aab5b8b9d0b1c8d8ea7a74e60a80"
+          },
+          "secret": "52505dbfe57dab0a236be8a78c938c40d74500f81f153d293d63bf5ce4565a4c",
+          "type": "dlog",
+          "a": "02fbb9f852d96872b72fe1d1b293b661923a4aa2dfbe37277942d1eba5a85b21d7",
+          "position": "0-4"
+        }
+      ]
+    }
+  }
+}

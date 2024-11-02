@@ -1,15 +1,15 @@
 import { Communicator } from '@rosen-bridge/communication';
 import {
-  Threshold,
   PendingSign,
   Sign,
   SignApprovePayload,
   SignerConfig,
   SignMessageType,
   SignRequestPayload,
+  SignResult,
   SignStartPayload,
   StatusEnum,
-  SignResult,
+  Threshold,
 } from '../types/signer';
 import { GuardDetection, ActiveGuard } from '@rosen-bridge/detection';
 import {

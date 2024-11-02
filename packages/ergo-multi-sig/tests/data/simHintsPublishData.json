@@ -1,0 +1,132 @@
+{
+  "cmts": [
+    {
+      "0": [
+        {
+          "a": "030de5043ba6f3164be5da207b202bc1a0c9f5470df7404e17b9aa05d8da1bfa0f",
+          "position": "0-1"
+        }
+      ]
+    },
+    {
+      "0": [
+        {
+          "a": "0368476eb02293421623d93f5112799ad2cff224c22269ecc45f3b65e95b4f9b5b",
+          "position": "0-0"
+        }
+      ]
+    },
+    {
+      "0": [
+        {
+          "a": "03b16be6ed7da037bc2a4667445bc67c7578e0906a944885fcd27fb18ffba295da",
+          "position": "0-9"
+        }
+      ]
+    },
+    {
+      "0": [
+        {
+          "a": "02440bc5c36882c659a68a9fcc0d228c73a0f9f80c9cc1f528ffb13cd7dd41f8f0",
+          "position": "0-3"
+        }
+      ]
+    }
+  ],
+  "hints": {
+    "secretHints": {
+      "0": [
+        {
+          "hint": "proofSimulated",
+          "pubkey": {
+            "op": "205",
+            "h": "02219e9dd9e7360cde44222c6b4a59fd4ee6b43f72a0dc20425451197f1c06a209"
+          },
+          "challenge": "283bd59a736e2f46e1062595b7fb6023e12cad5220cbc33c",
+          "proof": "283bd59a736e2f46e1062595b7fb6023e12cad5220cbc33c9b820c0edcecde170f91cda5c3773f6fb551be002b45d3a3437ae077d4427007",
+          "position": "0-0"
+        },
+        {
+          "hint": "proofSimulated",
+          "pubkey": {
+            "op": "205",
+            "h": "028d1cfbdc81c2a1575074ef761454cf6d8a339eecfa1b2afb052bfc2172e322e5"
+          },
+          "challenge": "d15b28e978684537ef44c02e06b06959b1326e969ad61d72",
+          "proof": "d15b28e978684537ef44c02e06b06959b1326e969ad61d72e7ed6064742decf26ee7e53086f7a6ee889539d25f0201aa64eec00e8237895c",
+          "position": "0-1"
+        },
+        {
+          "hint": "proofSimulated",
+          "pubkey": {
+            "op": "205",
+            "h": "02965907f60c6b4cd33dde56c97387ff8653374e0c64c0ce6b0a65e78877afdc4d"
+          },
+          "challenge": "8fed37faf5c35cd01563996783bad80d46889c22af0b14ea",
+          "proof": "8fed37faf5c35cd01563996783bad80d46889c22af0b14eab68a364c5fb31d6f416295f9980563732ef75b8b3eb007a31a0ec5c4e2b86426",
+          "position": "0-3"
+        },
+        {
+          "hint": "proofSimulated",
+          "pubkey": {
+            "op": "205",
+            "h": "03dabaa32b3b327c4239b8d3c78d40f7c0170a6a2ead79110b64a1b35f0951fe92"
+          },
+          "challenge": "794832a824378160d3f2b4398cdeeca33300cdf94d9789ea",
+          "proof": "794832a824378160d3f2b4398cdeeca33300cdf94d9789ea2ce473c48e350dc68f8d1e82c712b95d12aca1fe9dcd8b1917349732bfebe5fe",
+          "position": "0-9"
+        }
+      ]
+    },
+    "publicHints": {
+      "0": [
+        {
+          "hint": "cmtSimulated",
+          "pubkey": {
+            "op": "205",
+            "h": "02219e9dd9e7360cde44222c6b4a59fd4ee6b43f72a0dc20425451197f1c06a209"
+          },
+          "type": "dlog",
+          "a": "0368476eb02293421623d93f5112799ad2cff224c22269ecc45f3b65e95b4f9b5b",
+          "position": "0-0"
+        },
+        {
+          "hint": "cmtSimulated",
+          "pubkey": {
+            "op": "205",
+            "h": "028d1cfbdc81c2a1575074ef761454cf6d8a339eecfa1b2afb052bfc2172e322e5"
+          },
+          "type": "dlog",
+          "a": "030de5043ba6f3164be5da207b202bc1a0c9f5470df7404e17b9aa05d8da1bfa0f",
+          "position": "0-1"
+        },
+        {
+          "hint": "cmtSimulated",
+          "pubkey": {
+            "op": "205",
+            "h": "02965907f60c6b4cd33dde56c97387ff8653374e0c64c0ce6b0a65e78877afdc4d"
+          },
+          "type": "dlog",
+          "a": "02440bc5c36882c659a68a9fcc0d228c73a0f9f80c9cc1f528ffb13cd7dd41f8f0",
+          "position": "0-3"
+        },
+        {
+          "hint": "cmtSimulated",
+          "pubkey": {
+            "op": "205",
+            "h": "03dabaa32b3b327c4239b8d3c78d40f7c0170a6a2ead79110b64a1b35f0951fe92"
+          },
+          "type": "dlog",
+          "a": "03b16be6ed7da037bc2a4667445bc67c7578e0906a944885fcd27fb18ffba295da",
+          "position": "0-9"
+        }
+      ]
+    }
+  },
+  "pubs": [
+    "028d1cfbdc81c2a1575074ef761454cf6d8a339eecfa1b2afb052bfc2172e322e5",
+    "02219e9dd9e7360cde44222c6b4a59fd4ee6b43f72a0dc20425451197f1c06a209",
+    "03dabaa32b3b327c4239b8d3c78d40f7c0170a6a2ead79110b64a1b35f0951fe92",
+    "02965907f60c6b4cd33dde56c97387ff8653374e0c64c0ce6b0a65e78877afdc4d"
+  ]
+}

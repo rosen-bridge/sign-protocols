@@ -1,919 +1,705 @@
-import { MultiSigHandler } from '../lib';
-import * as wasm from 'ergo-lib-wasm-nodejs';
-import { MultiSigUtils } from '../lib';
+import { CommitmentPayload } from '../lib';
+import { describe, expect, it, vi } from 'vitest';
+import TestUtils from './testUtils/TestUtils';
+import { boxJs, testCmt, testPubs, testSecrets } from './testData';
+import { turnTime } from '../lib/const';
 import {
-  mockPartialSignedTransaction,
-  mockedErgoStateContext,
-} from './testData';
-import { CommitmentMisMatch } from '../lib/utils/errors';
-import TestConfigs from './testUtils/TestConfigs';
-import { invalidTx, promiseCallback, validTx } from './testData';
-import {
-  beforeAll,
-  describe,
-  expect,
-  it,
-  MockInstance,
-  vi,
-  afterAll,
-} from 'vitest';
+  getChangeBoxJs,
+  getOutBoxJs,
+  jsToReducedTx,
+} from './testUtils/txUtils';
+import { ErgoBox } from 'ergo-lib-wasm-nodejs';
+import { SenderSimulated } from './testUtils/SenderSimulated';
+
+const fee = 1000000;
+const tree =
+  '0008cd03e5bedab3f782ef17a73e9bdc41ee0e18c3ab477400f35bcf7caa54171db7ff36';
+const out = getOutBoxJs(tree, ['ERG', 10000000]);
+const ins = [boxJs];
+const dataBoxes: any = [];
+const change = getChangeBoxJs(ins, [out], tree, fee);
+const reduced = jsToReducedTx(ins, [out, change], dataBoxes, 1311604, fee);
+const requiredSings = 6;
+const boxes = ins.map((i: any) => ErgoBox.from_json(JSON.stringify(i)));
 
 describe('MultiSigHandler', () => {
-  const publicKeys = [
-    '028d938d67befbb8ab3513c44886c16c2bcd62ed4595b9b216b20ef03eb8fb8fb8',
-    '03074e09c476bb215dc3aeff908d0b7691895a99dfc3bd950fa629defe541e0364',
-    '0300e8750a242ee7d78f5b458e1f7474bd884d2b7894676412ba6b5f319d2ee410',
-    '023a5b48c87cd9fece23f5acd08cb464ceb9d76e3c1ddac08206980a295546bb2e',
-  ];
-
-  const generateMultiSigHandlerInstance = async (
-    secret: string,
-    pks?: string[],
-    submit?: (msg: string, peers: Array<string>) => unknown,
-  ): Promise<MultiSigHandler> => {
-    const multiSigUtilsInstance = new MultiSigUtils(async () => {
-      return mockedErgoStateContext;
-    });
-    const pubKeys = pks ? pks : publicKeys;
-    const handler = new MultiSigHandler({
-      multiSigUtilsInstance: multiSigUtilsInstance,
-      publicKeys: pubKeys,
-      secretHex: secret,
-      txSignTimeout: TestConfigs.txSignTimeout,
-      multiSigFirstSignDelay: TestConfigs.multiSigFirstSignDelay,
-      submit: submit ? submit : vi.fn(),
-      getPeerId: () => Promise.resolve('myPeerId'),
-    });
-    handler.handlePublicKeysChange(pubKeys);
-    return handler;
-  };
-
-  /**
-   * mocks Dialer.sendMessage such to throw error if at least one key
-   * doesn't exist in sent message
-   * @param bodyKeys
-   * @param payloadKeys
-   */
-  const checkSendMessageBodyAndPayloadArguments = (
-    bodyKeys: Array<string>,
-    payloadKeys: Array<string>,
-  ) => {
-    return async (msg: string, receiver: string[]) => {
-      const json = JSON.parse(msg);
-      if (json.type === 'approve') {
-        payloadKeys.forEach((key) => {
-          if (!(key in json.payload))
-            throw `key "${key}" is not in the dialer payload message`;
-        });
-        bodyKeys.forEach((key) => {
-          if (!(key in json)) throw 'key is not in the message';
-        });
-      }
-    };
-  };
-
-  describe('sendMessage', () => {
+  describe('peers', () => {
     /**
-     * @target MultiSigHandler.sendMessage should send message with
-     * expected keys
-     * @dependencies
-     * - Dialer
+     * @target MultiSigHandler.peers should return pks without IDs
+     * @dependencies MultiSigHandlerInstance
      * @scenario
-     * - mock Dialer.sendMessage to throw error if expectation does not meet
-     * - run test
+     * - Generate a MultiSigHandler instance
+     * - Call peers
      * @expected
-     * - sent message should contain 'sign' and 'payload' key
-     * - sent message payload should contain 'index', 'id', 'nonce' and 'myId'
+     * - returned value should be pks without IDs
+     * - returned value length should be equal to the testPubs length
+     * - returned value should not have IDs
      */
-    it('should send message with expected keys', async () => {
-      // mock Dialer.sendMessage
-      const submitFunc = checkSendMessageBodyAndPayloadArguments(
-        ['sign'],
-        ['index', 'id', 'nonce', 'myId'],
+    it('should return pks without IDs', async () => {
+      const sender = vi.fn();
+      const handler = await TestUtils.generateMultiSigHandlerInstance(
+        testSecrets[0],
+        sender,
+        testPubs,
       );
-
-      // run test
-      const handler = await generateMultiSigHandlerInstance(
-        '5bc1d17d0612e696a9138ab8e85ca2a02d0171440ec128a9ad557c28bd5ea046',
-        undefined,
-        submitFunc,
-      );
-
-      await handler.sendMessage({
-        type: 'approve',
-        payload: {
-          nonce: 'nonce',
-          myId: 'peerId',
-          nonceToSign: 'nonceToSign',
-        },
+      handler.peers().forEach((peer) => {
+        expect(peer.id).toBeUndefined();
       });
+      expect(handler.peers().length).toEqual(testPubs.length);
     });
   });
 
-  describe('getIndex', () => {
+  describe('peersWithIds', () => {
     /**
-     * @target MultiSigHandler.getIndex should return guard index successfully
+     * @target MultiSigHandler.peersWithIds should return pks with IDs
+     * @dependencies MultiSigHandlerInstance
+     * @scenario
+     * - Generate a MultiSigHandler instance
+     * - Call peersWithIds
+     * @expected
+     * - returned value should be pks with IDs
+     * - returned value length should be equal to the testPubs length
+     */
+    it('should return pks with IDs', async () => {
+      const sender = vi.fn();
+      const handler = await TestUtils.generateMultiSigHandlerInstance(
+        testSecrets[0],
+        sender,
+        testPubs,
+      );
+      (await handler.peersWithIds()).forEach((peer) => {
+        expect(peer.id).toBeDefined();
+      });
+      expect(handler.peers().length).toEqual(testPubs.length);
+    });
+  });
+
+  describe('getCurrentTurnId', () => {
+    /**
+     * @target MultiSigHandler.getCurrentTurnId should return ID for the guard with the current turn
      * @dependencies
      * @scenario
+     * - mock `setSystemTime`
      * - run test
      * - check returned value
      * @expected
-     * - returned value should be 0
+     * - returned value should be ID for the guard with the current turn
      */
-    it('should return guard index successfully', async () => {
-      const handler = await generateMultiSigHandlerInstance(
-        '5bc1d17d0612e696a9138ab8e85ca2a02d0171440ec128a9ad557c28bd5ea046',
+    it('should return ID for the guard with the current turn', async () => {
+      const sender = vi.fn();
+      const handler = await TestUtils.generateMultiSigHandlerInstance(
+        testSecrets[0],
+        sender,
+        testPubs,
       );
-      expect(handler.getIndex()).toEqual(0);
+      vi.setSystemTime(0);
+      const turnInd = handler.getCurrentTurnInd();
+      const id = await handler.getCurrentTurnId();
+      expect(id).toEqual(testPubs[turnInd]);
+      vi.setSystemTime(turnTime);
+      const turnInd2 = handler.getCurrentTurnInd();
+      const id2 = await handler.getCurrentTurnId();
+      expect(id2).toEqual(testPubs[turnInd2]);
     });
   });
 
-  describe('getProver', () => {
+  describe('getCurrentTurnInd', () => {
     /**
-     * @target MultiSigHandler.getProver should run successfully
+     * @target MultiSigHandler.getCurrentTurnInd should return current turn index
      * @dependencies
      * @scenario
+     * - mock `setSystemTime`
      * - run test
+     * - check returned value
      * @expected
-     * - only no error throws
+     * - returned value should be current turn index
      */
-    it('should run successfully', async () => {
-      const handler = await generateMultiSigHandlerInstance(
-        '5bc1d17d0612e696a9138ab8e85ca2a02d0171440ec128a9ad557c28bd5ea046',
+    it('should return current turn index', async () => {
+      const sender = vi.fn();
+      const handler = await TestUtils.generateMultiSigHandlerInstance(
+        testSecrets[0],
+        sender,
+        testPubs,
       );
-      handler.getProver();
+      vi.setSystemTime(0);
+      expect(handler.getCurrentTurnInd()).to.equal(0);
+      vi.setSystemTime(turnTime);
+      expect(handler.getCurrentTurnInd()).to.equal(1);
+      vi.setSystemTime(turnTime * testPubs.length + 1);
+      expect(handler.getCurrentTurnInd()).to.equal(0);
     });
   });
 
-  describe('handleApprove', () => {
+  /**
+   * @target MultiSigHandler.isMyTurn should return true if it is my turn
+   * @dependencies
+   * @scenario
+   * - mock `setSystemTime`
+   * - run test
+   * - check returned value
+   * @expected
+   * - returned value should be true for the first handler
+   * - returned value should be false for the second handler
+   */
+  describe('isMyTurn', () => {
+    it('should return true if it is my turn', async () => {
+      const sender = vi.fn();
+      const handler = await TestUtils.generateMultiSigHandlerInstance(
+        testSecrets[0],
+        sender,
+        testPubs,
+      );
+      const handler2 = await TestUtils.generateMultiSigHandlerInstance(
+        testSecrets[1],
+        sender,
+        testPubs,
+      );
+      vi.setSystemTime(0);
+      expect(await handler.isMyTurn()).to.be.true;
+      vi.setSystemTime(turnTime);
+      expect(await handler.isMyTurn()).to.be.false;
+      expect(await handler2.isMyTurn()).to.be.true;
+    });
+  });
+
+  describe('getQueuedTransaction', () => {
     /**
-     * @target MultiSigHandler.handleApprove should send message with
-     * expected keys
+     * @target MultiSigHandler.getQueuedTransaction should return queued transaction
      * @dependencies
-     * - Dialer
      * @scenario
-     * - mock Dialer.sendMessage to throw error if expectation does not meet
+     * - mock `queuedTransaction`
      * - run test
      * @expected
-     * - sent message should contain 'type', 'sign' and 'payload' key
-     * - sent message payload should contain 'nonceToSign'
+     * - returned value should be same as `queuedTransaction`
      */
-    it('should send message with expected keys', async () => {
-      // mock Dialer.sendMessage
-      checkSendMessageBodyAndPayloadArguments(
-        ['type', 'sign', 'payload'],
-        ['nonceToSign'],
+    it('should return an empty transaction for new txId', async () => {
+      // mock `queuedTransaction`
+      const handler = await TestUtils.generateMultiSigHandlerInstance(
+        testSecrets[0],
+        vi.fn(),
+        testPubs,
+      );
+      const txId = 'test';
+      const { transaction, release } = await handler.getQueuedTransaction(txId);
+      expect(transaction.coordinator).toEqual(-1);
+    });
+
+    /**
+     * @target MultiSigHandler.getQueuedTransaction should return an empty transaction for new txId
+     * @dependencies MultiSigHandlerInstance
+     * @scenario
+     * - Generate a MultiSigHandler instance
+     * - Call getQueuedTransaction with a test transaction ID
+     * @expected
+     * - The returned transaction should have a coordinator property equal to -1
+     */
+    it('should return the queued transaction', async () => {
+      // mock `queuedTransaction`
+      const handler = await TestUtils.generateMultiSigHandlerInstance(
+        testSecrets[0],
+        vi.fn(),
+        testPubs,
+      );
+      const txId = 'test';
+      const { transaction, release } = await handler.getQueuedTransaction(txId);
+      transaction.coordinator = 1;
+      release();
+      const { transaction: transaction2, release: release2 } =
+        await handler.getQueuedTransaction(txId);
+      expect(transaction2.coordinator).toEqual(1);
+    });
+  });
+
+  describe('signTransaction', () => {
+    /**
+     * @target MultiSigHandler.signTransaction should put transaction into queue
+     * @dependencies MultiSigHandlerInstance
+     * @scenario
+     * - Generate a MultiSigHandler instance
+     * - Call sign with a test transaction, required signs, boxes, and dataBoxes
+     * - Call getQueuedTransaction with the transaction ID
+     * @expected
+     * - The returned transaction should have boxes length equal to 1 and requiredSigner equal to 6
+     */
+    it('should put transaction into queue', async () => {
+      // mock `sign`
+      const handler = await TestUtils.generateMultiSigHandlerInstance(
+        testSecrets[0],
+        vi.fn(),
+        testPubs,
+      );
+      const mockedGenerateCmt = vi.fn();
+      vi.spyOn(handler, 'generateCommitment').mockImplementation(
+        mockedGenerateCmt,
       );
 
       // run test
-      const handler = await generateMultiSigHandlerInstance(
-        '5bc1d17d0612e696a9138ab8e85ca2a02d0171440ec128a9ad557c28bd5ea046',
+      handler.sign(reduced, requiredSings, boxes, dataBoxes);
+      const { transaction, release } = await handler.getQueuedTransaction(
+        reduced.unsigned_tx().id().to_str(),
       );
-      handler.handleApprove('sender', {
-        index: 1,
-        nonce: 'nonce',
-        myId: 'sender',
-        nonceToSign: '1',
-      });
+      expect(transaction.boxes.length).toEqual(1);
+      expect(transaction.requiredSigner).toEqual(6);
+    });
+
+    /**
+     * @target MultiSigHandler.signTransaction should call generateCommitment
+     * @dependencies MultiSigHandlerInstance
+     * @scenario
+     * - Generate a MultiSigHandler instance
+     * - Call sign with a test transaction, required signs, boxes, and dataBoxes
+     * @expected
+     * - generateCommitment should have been called
+     */
+    it('should call generateCommitment', async () => {
+      // mock `sign`
+      const handler = await TestUtils.generateMultiSigHandlerInstance(
+        testSecrets[0],
+        vi.fn(),
+        testPubs,
+      );
+      const mockedGenerateCmt = vi.fn();
+      vi.spyOn(handler, 'generateCommitment').mockImplementation(
+        mockedGenerateCmt,
+      );
+      expect(mockedGenerateCmt).not.toHaveBeenCalled();
     });
   });
 
-  describe('handleMessage', () => {
-    const functionNames = [
-      'handleCommitment',
-      'handleSign',
-      'handleRegister',
-      'handleApprove',
-    ];
-
+  describe('addTx', () => {
     /**
-     * @target MultiSigHandler.handleMessage should call correct
-     * handle function
-     * @dependencies
+     * @target MultiSigHandler.addTx should add transaction to the queue
+     * @dependencies MultiSigHandlerInstance
      * @scenario
-     * - mock all handle functions of MultiSigHandler
-     * - mock message
-     * - run test
-     * - check if function got called
+     * - Generate a MultiSigHandler instance
+     * - Call addTx with a test transaction, required signs, boxes, and dataBoxes
+     * - Call getQueuedTransaction with the transaction ID
      * @expected
-     * - expected handle function should get called
-     * - other handle functions should NOT get called
+     * - The returned transaction should have boxes length equal to 1 and requiredSigner equal to 6
      */
-    it.each([
-      ['handleCommitment', 'commitment'],
-      ['handleApprove', 'approve'],
-      ['handleRegister', 'register'],
-      ['handleSign', 'sign'],
-    ])(
-      'should call `%s` when type is `%s`',
-      async (handleFunction, messageType) => {
-        // mock all handle functions of MultiSigHandler
-        const handler = await generateMultiSigHandlerInstance(
-          '168e8fee8ac6965832d6c1c17cdf60c1b582b09f293d8bd88231e32740e3b24f',
-        );
-        const handleFunctions = new Map<string, MockInstance>();
-        functionNames.forEach((functionName) =>
-          handleFunctions.set(
-            functionName,
-            vi.spyOn(handler, functionName as any),
-          ),
-        );
-
-        // mock message
-        const message = `{"type":"${messageType}","payload":{"txId":"356ebd85f01ee25c3c241950b77d533ee46bcdc7c3a02a2f24bb25946b9fec96","commitment":{"0":[{"a":"02acf3bf8466386df1cedca127ac8e025223ce1f88f430fc6f1dfabc424857e15c","position":"0-1"}]},"index":1,"id":"12D3KooWSC69DeYqzwjeDYFFXqEgNPUvDxVaypezZpkUXVA8UkR2"},"sign":"+nHOaX5etrB+JI3tMa+EfSsBX7tBKhALubQ7D3iLl4VuzsXFOFfkgpas8tPm5/nrElGW5Y4CpzB+DuWAEvK1sA=="}`;
-
-        // run test
-        handler.handleMessage(
-          message,
-          'multi-sig',
-          '12D3KooWSC69DeYqzwjeDYFFXqEgNPUvDxVaypezZpkUXVA8UkR2',
-        );
-        handleFunctions.forEach((spy, functionName) => {
-          if (functionName === handleFunction)
-            expect(spy).toHaveBeenCalledOnce();
-          else expect(spy).not.toHaveBeenCalledOnce();
-        });
-      },
-    );
-  });
-
-  describe('handlePublicKeysChange', () => {
-    const updatedPublicKeys = [
-      '028d938d67befbb8ab3513c44886c16c2bcd62ed4595b9b216b20ef03eb8fb8fb1',
-      '028d938d67befbb8ab3513c44886c16c2bcd62ed4595b9b216b20ef03eb8fb8fb2',
-      '028d938d67befbb8ab3513c44886c16c2bcd62ed4595b9b216b20ef03eb8fb8fb3',
-      '028d938d67befbb8ab3513c44886c16c2bcd62ed4595b9b216b20ef03eb8fb8fb4',
-      '028d938d67befbb8ab3513c44886c16c2bcd62ed4595b9b216b20ef03eb8fb8fb5',
-      '028d938d67befbb8ab3513c44886c16c2bcd62ed4595b9b216b20ef03eb8fb8fb6',
-      '028d938d67befbb8ab3513c44886c16c2bcd62ed4595b9b216b20ef03eb8fb8fb7',
-    ];
-
-    /**
-     * @target MultiSigHandler.handlePublicKeysChange should update peers
-     * and send register message
-     * @dependencies
-     * @scenario
-     * - mock `sendRegister`
-     * - run test
-     * - check if new index is verified
-     * - check if function got called
-     * @expected
-     * - index 6 should get verified
-     * - `sendRegister` should get called
-     */
-    it('should update peers and send register message', async () => {
-      // mock `sendRegister`
-      const handler = await generateMultiSigHandlerInstance(
-        '5bc1d17d0612e696a9138ab8e85ca2a02d0171440ec128a9ad557c28bd5ea046',
+    it('should add transaction to the queue', async () => {
+      const handler = await TestUtils.generateMultiSigHandlerInstance(
+        testSecrets[0],
+        vi.fn(),
+        testPubs,
       );
-      const mockedSendRegister = vi.fn();
-      vi.spyOn(handler, 'sendRegister').mockImplementation(mockedSendRegister);
-
-      handler.handlePublicKeysChange(updatedPublicKeys);
-
-      // check if new index is verified
-      expect(handler.verifyIndex(6)).toEqual(true);
-
-      // check if function got called
-      expect(mockedSendRegister).toHaveBeenCalledOnce();
+      const txId = reduced.unsigned_tx().id().to_str();
+      await TestUtils.addTx(handler, reduced, requiredSings, boxes, dataBoxes);
+      const { transaction, release } = await handler.getQueuedTransaction(txId);
+      expect(transaction.boxes.length).toEqual(1);
+      expect(transaction.requiredSigner).toEqual(6);
     });
   });
 
-  describe('handleRegister', () => {
+  describe('generateCommitment', () => {
     /**
-     * @target MultiSigHandler.handleRegister should handle and send response successfully
-     * @dependencies
+     * @target MultiSigHandler.generateCommitment should generate commitment
+     * @dependencies MultiSigHandlerInstance
      * @scenario
-     * - mock MultiSigHandler.sendMessage
-     * - run test
-     * - check if function got called
+     * - Generate a MultiSigHandler instance
+     * - Call addTx with a test transaction, required signs, boxes, and dataBoxes
+     * - Call generateCommitment with the transaction ID
      * @expected
-     * - `sendMessage` should get called
+     * - The returned transaction should have commitments length equal to 1
      */
-    it('should handle and send response successfully', async () => {
-      // mock MultiSigHandler.sendMessage
-      const handler = await generateMultiSigHandlerInstance(
-        '5bc1d17d0612e696a9138ab8e85ca2a02d0171440ec128a9ad557c28bd5ea046',
+    it('should generate commitment', async () => {
+      const handler = await TestUtils.generateMultiSigHandlerInstance(
+        testSecrets[0],
+        vi.fn(),
+        testPubs,
+      );
+      await TestUtils.addTx(handler, reduced, requiredSings, boxes, dataBoxes);
+      await handler.generateCommitment(reduced.unsigned_tx().id().to_str());
+      const { transaction, release } = await handler.getQueuedTransaction(
+        reduced.unsigned_tx().id().to_str(),
+      );
+      expect(Object.values(transaction.commitments).length).toEqual(1);
+      expect(Object.keys(transaction.commitments)[0]).toEqual(testPubs[0]);
+      expect(transaction.secret).toBeDefined();
+    });
+
+    /**
+     * @target MultiSigHandler.generateCommitment should not call sendMessage if his turn
+     * @dependencies MultiSigHandlerInstance
+     * @scenario
+     * - Generate a MultiSigHandler instance
+     * - Call addTx with a test transaction, required signs, boxes, and dataBoxes
+     * - Set system time to 0
+     * - Call generateCommitment with the transaction ID
+     * @expected
+     * - sendMessage should not have been called
+     */
+    it('should not call sendMessage if his turn', async () => {
+      const handler = await TestUtils.generateMultiSigHandlerInstance(
+        testSecrets[0],
+        vi.fn(),
+        testPubs,
       );
       const mockedSendMessage = vi.fn();
-      vi.spyOn(handler, 'sendMessage').mockImplementation(mockedSendMessage);
-
-      // run test
-      handler.handleRegister('sender', {
-        index: 1,
-        nonce: 'nonce',
-        myId: 'myId',
-      });
-
-      await vi.waitFor(() => {
-        // check if function got called
-        expect(mockedSendMessage).toHaveBeenCalledOnce();
-      });
-    });
-  });
-
-  describe('handleSign', () => {
-    /**
-     * @target MultiSigHandler.handleSign should generate sign
-     * with no error when updateSign is true
-     * @dependencies
-     * @scenario
-     * - mock test data
-     * - mock `getQueuedTransaction`
-     * - mock `verifySignedPayload`
-     * - mock `generateSign`
-     * - run test
-     * - check if function got called
-     * @expected
-     * - `generateSign` should get called
-     */
-    it('should generate sign with no error when updateSign is true', async () => {
-      // mock test data
-      const box1Hex =
-        '80a8d6b907100304000e20a6ac381e6fa99929fd1477b3ba9499790a775e91d4c14c5aa86e9a118dfac8530400d801d601b2db6501fe730000ea02d1aedb63087201d901024d0e938c720201730198b2e4c672010510730200ade4c67201041ad901020ecdee72028cc10f00003a4f8dac9bbe80fffaf400edd5779b7ccd5628beceab06c41b5b7b3e091e963501';
-      const dataBoxHex =
-        '80ade2041006040004000400040004000402d804d601b2a5730000d602e4c6a7041ad603e4c6a70510d604ad7202d901040ecdee7204ea02d19683020193c27201c2a7938cb2db63087201730100018cb2db6308a773020001eb02ea02d19683020193e4c67201041a720293e4c672010510720398b2e4c6b2db6501fe7303000510730400720498b2720373050072048cc10f01a6ac381e6fa99929fd1477b3ba9499790a775e91d4c14c5aa86e9a118dfac85301021a0421028d938d67befbb8ab3513c44886c16c2bcd62ed4595b9b216b20ef03eb8fb8fb82103074e09c476bb215dc3aeff908d0b7691895a99dfc3bd950fa629defe541e0364210300e8750a242ee7d78f5b458e1f7474bd884d2b7894676412ba6b5f319d2ee41021023a5b48c87cd9fece23f5acd08cb464ceb9d76e3c1ddac08206980a295546bb2e100206081d827c338829135cc5c7d7f03ad9ba8ecffc6f5cddf63a2655c55922786230c000';
-      const box1 = wasm.ErgoBox.sigma_parse_bytes(
-        Uint8Array.from(Buffer.from(box1Hex, 'hex')),
+      vi.spyOn(handler as any, 'sendMessage').mockImplementation(
+        mockedSendMessage,
       );
-      const dataBox = wasm.ErgoBox.sigma_parse_bytes(
-        Uint8Array.from(Buffer.from(dataBoxHex, 'hex')),
-      );
-
-      // mock `getQueuedTransaction`
-      const handler = await generateMultiSigHandlerInstance(
-        '5bc1d17d0612e696a9138ab8e85ca2a02d0171440ec128a9ad557c28bd5ea046',
-      );
-      const obj = {
-        transaction: {
-          boxes: [box1],
-          dataBoxes: [dataBox],
-          commitments: [undefined],
-          commitmentSigns: [''],
-          createTime: 0,
-          requiredSigner: 2,
-        },
-        release: () => null,
-      };
-      vi.spyOn(handler, 'getQueuedTransaction').mockResolvedValue(obj);
-
-      // mock `verifySignedPayload`
-      vi.spyOn(handler, 'verifySignedPayload').mockResolvedValue();
-
-      // mock `generateSign`
-      const mockedGenerateSign = vi.fn();
-      vi.spyOn(handler, 'generateSign').mockImplementation(mockedGenerateSign);
-
-      // run test
-      await handler.handleSign('sender', {
-        commitments: [],
-        signed: ['1'],
-        simulated: ['2'],
-        tx: '',
-        txId: 'txid',
-      });
-
-      // `generateSign` should get called
-      expect(mockedGenerateSign).toHaveBeenCalledWith('txid', obj.transaction);
+      await TestUtils.addTx(handler, reduced, requiredSings, boxes, dataBoxes);
+      vi.setSystemTime(0);
+      await handler.generateCommitment(reduced.unsigned_tx().id().to_str());
+      expect(mockedSendMessage).not.toHaveBeenCalled();
     });
 
     /**
-     * @target MultiSigHandler.handleSign should generate sign
-     * with no error when updateSign is false
-     * @dependencies
+     * @target MultiSigHandler.generateCommitment should call sendMessage if not his turn
+     * @dependencies MultiSigHandlerInstance
      * @scenario
-     * - mock test data
-     * - mock `getQueuedTransaction`
-     * - mock `verifySignedPayload`
-     * - mock `generateSign`
-     * - run test
-     * - check if function got called
+     * - Generate a MultiSigHandler instance
+     * - Call addTx with a test transaction, required signs, boxes, and dataBoxes
+     * - Set system time to turnTime
+     * - Call generateCommitment with the transaction ID
      * @expected
-     * - `generateSign` should get called
+     * - sendMessage should have been called
      */
-    it('should generate sign with no error when updateSign is false', async () => {
-      // mock test data
-      const box1Hex =
-        '80a8d6b907100304000e20a6ac381e6fa99929fd1477b3ba9499790a775e91d4c14c5aa86e9a118dfac8530400d801d601b2db6501fe730000ea02d1aedb63087201d901024d0e938c720201730198b2e4c672010510730200ade4c67201041ad901020ecdee72028cc10f00003a4f8dac9bbe80fffaf400edd5779b7ccd5628beceab06c41b5b7b3e091e963501';
-      const dataBoxHex =
-        '80ade2041006040004000400040004000402d804d601b2a5730000d602e4c6a7041ad603e4c6a70510d604ad7202d901040ecdee7204ea02d19683020193c27201c2a7938cb2db63087201730100018cb2db6308a773020001eb02ea02d19683020193e4c67201041a720293e4c672010510720398b2e4c6b2db6501fe7303000510730400720498b2720373050072048cc10f01a6ac381e6fa99929fd1477b3ba9499790a775e91d4c14c5aa86e9a118dfac85301021a0421028d938d67befbb8ab3513c44886c16c2bcd62ed4595b9b216b20ef03eb8fb8fb82103074e09c476bb215dc3aeff908d0b7691895a99dfc3bd950fa629defe541e0364210300e8750a242ee7d78f5b458e1f7474bd884d2b7894676412ba6b5f319d2ee41021023a5b48c87cd9fece23f5acd08cb464ceb9d76e3c1ddac08206980a295546bb2e100206081d827c338829135cc5c7d7f03ad9ba8ecffc6f5cddf63a2655c55922786230c000';
-      const box1 = wasm.ErgoBox.sigma_parse_bytes(
-        Uint8Array.from(Buffer.from(box1Hex, 'hex')),
+    it('should call sendMessage if not his turn', async () => {
+      const handler = await TestUtils.generateMultiSigHandlerInstance(
+        testSecrets[0],
+        vi.fn(),
+        testPubs,
       );
-      const dataBox = wasm.ErgoBox.sigma_parse_bytes(
-        Uint8Array.from(Buffer.from(dataBoxHex, 'hex')),
+      const mockedSendMessage = vi.fn();
+      vi.spyOn(handler as any, 'sendMessage').mockImplementation(
+        mockedSendMessage,
       );
-
-      // mock `getQueuedTransaction`
-      const handler = await generateMultiSigHandlerInstance(
-        '5bc1d17d0612e696a9138ab8e85ca2a02d0171440ec128a9ad557c28bd5ea046',
-      );
-      const obj = {
-        transaction: {
-          boxes: [box1],
-          dataBoxes: [dataBox],
-          commitments: [undefined],
-          commitmentSigns: [''],
-          createTime: 0,
-          requiredSigner: 2,
-          sign: {
-            signed: ['sign'],
-            simulated: ['simulated'],
-            transaction: new Uint8Array([2]),
-          },
-        },
-        release: () => null,
-      };
-      vi.spyOn(handler, 'getQueuedTransaction').mockResolvedValue(obj);
-
-      // mock `verifySignedPayload`
-      vi.spyOn(handler, 'verifySignedPayload').mockResolvedValue();
-
-      // mock `generateSign`
-      const mockedGenerateSign = vi.fn();
-      vi.spyOn(handler, 'generateSign').mockImplementation(mockedGenerateSign);
-
-      // run test
-      await handler.handleSign('sender', {
-        commitments: [],
-        signed: ['1'],
-        simulated: ['2'],
-        tx: '',
-        txId: 'txid',
-      });
-
-      // `generateSign` should get called
-      expect(mockedGenerateSign).toHaveBeenCalledWith('txid', obj.transaction);
+      await TestUtils.addTx(handler, reduced, requiredSings, boxes, dataBoxes);
+      vi.setSystemTime(turnTime);
+      await handler.generateCommitment(reduced.unsigned_tx().id().to_str());
+      expect(mockedSendMessage).toHaveBeenCalled();
     });
   });
 
+  /**
+   * @target MultiSigHandler.handleCommitment should do nothing if not his turn
+   * @dependencies MultiSigHandlerInstance
+   * @scenario
+   * - Generate a MultiSigHandler instance
+   * - Call addTx with a test transaction, required signs, boxes, and dataBoxes
+   * - Set system time to turnTime
+   * - Call handleCommitment with a test sender, payload, and signature
+   * @expected
+   * - sendMessage should not have been called
+   * - The returned transaction should have commitments length equal to 0
+   */
   describe('handleCommitment', () => {
-    /**
-     * @target MultiSigHandler.handleCommitment should generate sign
-     * with no error
-     * @dependencies
-     * @scenario
-     * - mock test data
-     * - mock `getQueuedTransaction`
-     * - mock `generateSign`
-     * - run test
-     * - check if functions got called
-     * @expected
-     * - `generateSign` should get called
-     */
-    it('should generate sign with no error', async () => {
-      // mock test data
-      const box1Hex =
-        '80a8d6b907100304000e20a6ac381e6fa99929fd1477b3ba9499790a775e91d4c14c5aa86e9a118dfac8530400d801d601b2db6501fe730000ea02d1aedb63087201d901024d0e938c720201730198b2e4c672010510730200ade4c67201041ad901020ecdee72028cc10f00003a4f8dac9bbe80fffaf400edd5779b7ccd5628beceab06c41b5b7b3e091e963501';
-      const dataBoxHex =
-        '80ade2041006040004000400040004000402d804d601b2a5730000d602e4c6a7041ad603e4c6a70510d604ad7202d901040ecdee7204ea02d19683020193c27201c2a7938cb2db63087201730100018cb2db6308a773020001eb02ea02d19683020193e4c67201041a720293e4c672010510720398b2e4c6b2db6501fe7303000510730400720498b2720373050072048cc10f01a6ac381e6fa99929fd1477b3ba9499790a775e91d4c14c5aa86e9a118dfac85301021a0421028d938d67befbb8ab3513c44886c16c2bcd62ed4595b9b216b20ef03eb8fb8fb82103074e09c476bb215dc3aeff908d0b7691895a99dfc3bd950fa629defe541e0364210300e8750a242ee7d78f5b458e1f7474bd884d2b7894676412ba6b5f319d2ee41021023a5b48c87cd9fece23f5acd08cb464ceb9d76e3c1ddac08206980a295546bb2e100206081d827c338829135cc5c7d7f03ad9ba8ecffc6f5cddf63a2655c55922786230c000';
-      const box1 = wasm.ErgoBox.sigma_parse_bytes(
-        Uint8Array.from(Buffer.from(box1Hex, 'hex')),
+    it('should do nothing if not his turn', async () => {
+      const handler = await TestUtils.generateMultiSigHandlerInstance(
+        testSecrets[0],
+        vi.fn(),
+        testPubs,
       );
-      const dataBox = wasm.ErgoBox.sigma_parse_bytes(
-        Uint8Array.from(Buffer.from(dataBoxHex, 'hex')),
+      const mockedSendMessage = vi.fn();
+      vi.spyOn(handler as any, 'sendMessage').mockImplementation(
+        mockedSendMessage,
       );
-      // mock `getQueuedTransaction`
-      const handler = await generateMultiSigHandlerInstance(
-        '5bc1d17d0612e696a9138ab8e85ca2a02d0171440ec128a9ad557c28bd5ea046',
-      );
-      const obj = {
-        transaction: {
-          boxes: [box1],
-          dataBoxes: [dataBox],
-          commitments: [undefined],
-          commitmentSigns: [''],
-          createTime: 0,
-          requiredSigner: 2,
-        },
-        release: () => null,
-      };
-      vi.spyOn(handler, 'getQueuedTransaction').mockResolvedValue(obj);
+      await TestUtils.addTx(handler, reduced, requiredSings, boxes, dataBoxes);
 
-      // mock `generateSign`
-      const mockedDelayedGenerateSign = vi.fn();
-      vi.spyOn(handler, 'delayedGenerateSign').mockImplementation(
-        mockedDelayedGenerateSign,
-      );
-
-      // run test
+      vi.setSystemTime(turnTime);
       await handler.handleCommitment(
-        'sender',
-        {
-          commitment: { index: [{ a: '3', position: '1-1' }] },
-          txId: 'txid',
-          index: 1,
-        },
-        'sign',
+        '0',
+        testCmt.payload as CommitmentPayload,
+        testCmt.sign,
+        0, // Pass the index here
       );
+      expect(mockedSendMessage).not.toHaveBeenCalled();
+      const { transaction, release } = await handler.getQueuedTransaction(
+        reduced.unsigned_tx().id().to_str(),
+      );
+      expect(Object.values(transaction.commitments).length).toEqual(0);
+    });
 
-      // `generateSign` should get called
-      expect(mockedDelayedGenerateSign).toHaveBeenCalledWith('txid');
+    /**
+     * @target MultiSigHandler.handleCommitment should add commitment to the tx
+     * @dependencies MultiSigHandlerInstance
+     * @scenario
+     * - Generate a MultiSigHandler instance
+     * - Call addTx with a test transaction, required signs, boxes, and dataBoxes
+     * - Set system time to 0
+     * - Call handleCommitment with a test sender, payload, and signature
+     * @expected
+     * - sendMessage should not have been called
+     * - The returned transaction should have commitments length equal to 1
+     */
+    it('should add commitment to the tx', async () => {
+      const handler = await TestUtils.generateMultiSigHandlerInstance(
+        testSecrets[0],
+        vi.fn(),
+        testPubs,
+      );
+      const mockedSendMessage = vi.fn();
+      vi.spyOn(handler as any, 'sendMessage').mockImplementation(
+        mockedSendMessage,
+      );
+      await TestUtils.addTx(handler, reduced, requiredSings, boxes, dataBoxes);
+
+      vi.setSystemTime(0);
+      await handler.generateCommitment(reduced.unsigned_tx().id().to_str());
+      await handler.handleCommitment(
+        '0',
+        testCmt.payload as CommitmentPayload,
+        testCmt.sign,
+        0, // Pass the index here
+      );
+      expect(mockedSendMessage).not.toHaveBeenCalled();
+      const { transaction, release } = await handler.getQueuedTransaction(
+        reduced.unsigned_tx().id().to_str(),
+      );
+      expect(Object.values(transaction.commitments).length).toEqual(1);
+    });
+
+    /**
+     * @target MultiSigHandler.handleCommitment should send commitments to the proper peer
+     * @dependencies MultiSigHandlerInstance
+     * @scenario
+     * - Generate a MultiSigHandler instance
+     * - Call addTx with a test transaction, required signs, boxes, and dataBoxes
+     * - Set system time to 0
+     * - Call handleCommitment with a test sender, payload, and signature
+     * @expected
+     * - The returned transaction should have commitments length equal to 3
+     */
+    it('should send commitments to the proper peer', async () => {
+      const simulatedSender = new SenderSimulated();
+      const allHandlers = await Promise.all(
+        testSecrets.map((secret, index) =>
+          TestUtils.generateMultiSigHandlerInstance(
+            secret,
+            simulatedSender.simulatedSender,
+            testPubs,
+          ),
+        ),
+      );
+      const handlers = allHandlers.slice(0, 3);
+      await simulatedSender.changeHandlers(handlers);
+      vi.setSystemTime(0);
+      await Promise.all(
+        handlers.map((handler) => {
+          return TestUtils.addTx(
+            handler,
+            reduced,
+            requiredSings,
+            boxes,
+            dataBoxes,
+          );
+        }),
+      );
+      await Promise.all(
+        handlers.map((handler) => {
+          return handler.generateCommitment(
+            reduced.unsigned_tx().id().to_str(),
+          );
+        }),
+      );
+      const turnHandler = handlers[0];
+      const { transaction, release } = await turnHandler.getQueuedTransaction(
+        reduced.unsigned_tx().id().to_str(),
+      );
+      expect(Object.values(transaction.commitments).length).toEqual(3);
     });
   });
 
+  describe('initiateSign', () => {
+    /**
+     * @target MultiSigHandler.initiateSign should successfully sign the transaction
+     * @dependencies MultiSigHandlerInstance
+     * @scenario
+     * - Generate a MultiSigHandler instance
+     * - Call addTx with a test transaction, required signs, boxes, and dataBoxes
+     * - Set system time to 0
+     * - Call initiateSign with a test sender and payload
+     * @expected
+     * - The returned transaction should have coordinator property equal to -1
+     */
+    it('should successfully sign the transaction', async () => {
+      const simulatedSender = new SenderSimulated();
+      const handlers = await Promise.all(
+        testSecrets.map((secret, index) =>
+          TestUtils.generateMultiSigHandlerInstance(
+            secret,
+            simulatedSender.simulatedSender,
+            testPubs,
+          ),
+        ),
+      );
+      await simulatedSender.changeHandlers(handlers);
+      vi.setSystemTime(0);
+      await Promise.all(
+        handlers.map((handler) => {
+          return TestUtils.addTx(
+            handler,
+            reduced,
+            requiredSings,
+            boxes,
+            dataBoxes,
+          );
+        }),
+      );
+      await Promise.all(
+        handlers.map((handler) => {
+          return handler.sign(reduced, requiredSings, boxes, dataBoxes);
+        }),
+      );
+      const turnHandler = handlers[0];
+      const { transaction, release } = await turnHandler.getQueuedTransaction(
+        reduced.unsigned_tx().id().to_str(),
+      );
+
+      expect(transaction.coordinator).toEqual(-1);
+    });
+  });
+
+  /**
+   * @target MultiSigHandler.cleanup should remove expired transactions
+   * @dependencies MultiSigHandlerInstance
+   * @scenario
+   * - Generate a MultiSigHandler instance
+   * - Call addTx with a test transaction, required signs, boxes, and dataBoxes
+   * - Set system time to 10e6
+   * - Call cleanup
+   * - Call getQueuedTransaction with the transaction ID
+   * @expected
+   * - The returned transaction should have boxes length equal to 0
+   */
   describe('cleanup', () => {
-    beforeAll(() => {
-      vi.useFakeTimers();
-      vi.setSystemTime(new Date(TestConfigs.currentTimeStamp));
-    });
-
-    afterAll(() => {
-      vi.useRealTimers();
-    });
-
-    /**
-     * @target MultiSigHandler.cleanup should remove
-     * transactions that are timeout
-     * @dependencies
-     * - Date
-     * @scenario
-     * - mock two transactions (one after 3 seconds)
-     * - run test
-     * - check mocked transactions
-     * @expected
-     * - timeout transaction should not exist in queue
-     * - other transaction should still be in queue
-     */
-    it('should remove transactions that are timeout', async () => {
-      // mock two transactions
-      const handler = await generateMultiSigHandlerInstance(
-        '5bc1d17d0612e696a9138ab8e85ca2a02d0171440ec128a9ad557c28bd5ea046',
+    it('should remove expired transactions', async () => {
+      const handler = await TestUtils.generateMultiSigHandlerInstance(
+        testSecrets[0],
+        vi.fn(),
+        testPubs,
       );
-      const tx1 = await handler.getQueuedTransaction('tx1');
-      tx1.release();
-      vi.advanceTimersByTime(3000);
-      const tx2 = await handler.getQueuedTransaction('tx2');
-      tx2.release();
-
-      // run test
+      vi.setSystemTime(0);
+      await TestUtils.addTx(handler, reduced, requiredSings, boxes, dataBoxes);
+      vi.setSystemTime(10e6);
       handler.cleanup();
+      const { transaction, release } = await handler.getQueuedTransaction(
+        reduced.unsigned_tx().id().to_str(),
+      );
+      expect(transaction.boxes.length).toEqual(0);
+    });
 
-      // timeout transaction should not exist in queue
-      const tx3 = await handler.getQueuedTransaction('tx1');
-      tx3.release();
-      expect(tx3.transaction).not.toEqual(tx1.transaction);
-
-      // other transaction should still be in queue
-      const tx4 = await handler.getQueuedTransaction('tx2');
-      tx4.release();
-      expect(tx4.transaction).toEqual(tx2.transaction);
+    /**
+     * @target MultiSigHandler.cleanup should not remove good transactions
+     * @dependencies MultiSigHandlerInstance
+     * @scenario
+     * - Generate a MultiSigHandler instance
+     * - Call addTx with a test transaction, required signs, boxes, and dataBoxes
+     * - Set system time to 1e2
+     * - Call cleanup
+     * - Call getQueuedTransaction with the transaction ID
+     * @expected
+     * - The returned transaction should have boxes length equal to 1
+     */
+    it('should not remove good transactions', async () => {
+      const handler = await TestUtils.generateMultiSigHandlerInstance(
+        testSecrets[0],
+        vi.fn(),
+        testPubs,
+      );
+      vi.setSystemTime(0);
+      await TestUtils.addTx(handler, reduced, requiredSings, boxes, dataBoxes);
+      vi.setSystemTime(1e2);
+      handler.cleanup();
+      const { transaction, release } = await handler.getQueuedTransaction(
+        reduced.unsigned_tx().id().to_str(),
+      );
+      expect(transaction.boxes.length).toEqual(1);
     });
   });
 
-  describe('verifySignedPayload', () => {
+  /**
+   * @target MultiSigHandler.handleMyTurn should do nothing if it is not his turn
+   * @dependencies MultiSigHandlerInstance
+   * @scenario
+   * - Generate a MultiSigHandler instance
+   * - Call addTx with a test transaction, required signs, boxes, and dataBoxes
+   * - Set system time to turnTime
+   * - Call handleMyTurn
+   * @expected
+   * - sendMessage should not have been called
+   */
+  describe('handleMyTurn', () => {
+    it('should do nothing if it is not his turn', async () => {
+      const sender = vi.fn();
+      const handler = await TestUtils.generateMultiSigHandlerInstance(
+        testSecrets[0],
+        sender,
+        testPubs,
+      );
+      await TestUtils.addTx(handler, reduced, requiredSings, boxes, dataBoxes);
+      vi.setSystemTime(turnTime);
+      await handler.handleMyTurn();
+      expect(sender).not.toHaveBeenCalled();
+    });
+
     /**
-     * @target MultiSigHandler.verifySignedPayload should throw error
-     * when used commitment and stored commitment are different
-     * @dependencies
-     * - MultiSigUtils
+     * @target MultiSigHandler.handleMyTurn should ask for commitments from all peers
+     * @dependencies MultiSigHandlerInstance
      * @scenario
-     * - mock test data
-     * - run test and expect exception thrown
+     * - Generate a MultiSigHandler instance
+     * - Call addTx with a test transaction, required signs, boxes, and dataBoxes
+     * - Set system time to 0
+     * - Call handleMyTurn
      * @expected
-     * - should throw `CommitmentMisMatch` error
+     * - sendMessage should have been called with a 'generateCommitment' message
      */
-    it('should throw error when used commitment and stored commitment are different', async () => {
-      // mock test data
-      const tx = mockPartialSignedTransaction();
-      const transaction = {
-        boxes: tx.inputBoxes,
-        dataBoxes: [],
-        commitments: [],
-        commitmentSigns: ['sign'],
-        createTime: 0,
-        requiredSigner: 2,
-        sign: {
-          signed: ['sign'],
-          simulated: ['simulated'],
-          transaction: new Uint8Array([2]),
-        },
-        secret: tx.commitments[1],
-      };
-      const publishedCommitmentFirst =
-        MultiSigUtils.generatedCommitmentToPublishCommitment(
-          tx.commitments[0].to_json(),
-        );
-      const publishedCommitmentSecond =
-        MultiSigUtils.generatedCommitmentToPublishCommitment(
-          tx.commitments[1].to_json(),
-        );
-
-      // Changing publishedCommitment
-      publishedCommitmentSecond[0][0].a = '11';
-
-      const payload = {
-        commitments: [
-          { index: 0, sign: 'sign', commitment: publishedCommitmentFirst },
-          { index: 1, sign: 'sign', commitment: publishedCommitmentSecond },
-        ],
-        signed: [publicKeys[0]],
-        simulated: [publicKeys[1]],
-        tx: Buffer.from(tx.transaction.sigma_serialize_bytes()).toString(
-          'base64',
-        ),
-        txId: 'txid',
-      };
-
-      // run test and expect exception thrown
-      const handler = await generateMultiSigHandlerInstance(
-        '5bc1d17d0612e696a9138ab8e85ca2a02d0171440ec128a9ad557c28bd5ea046',
+    it('should ask for commitments from all peers', async () => {
+      const handler = await TestUtils.generateMultiSigHandlerInstance(
+        testSecrets[0],
+        vi.fn(),
+        testPubs,
       );
-      await expect(async () => {
-        await handler.verifySignedPayload(transaction, payload);
-      }).rejects.toThrow(CommitmentMisMatch);
+      await TestUtils.addTx(handler, reduced, requiredSings, boxes, dataBoxes);
+      vi.setSystemTime(0);
+      const sender = vi.fn();
+      vi.spyOn(handler as any, 'sendMessage').mockImplementation(sender);
+      await handler.handleMyTurn();
+      expect(sender).toHaveBeenLastCalledWith(
+        'generateCommitment',
+        { txId: reduced.unsigned_tx().id().to_str() },
+        testPubs,
+        0,
+      );
     });
 
     /**
-     * @target MultiSigHandler.verifySignedPayload should throw error
-     * when stored commitment and transaction commitments are different
-     * @dependencies
-     * - MultiSigUtils
+     * @target MultiSigHandler.handleMyTurn should ask for commitments from all peers if turn changes
+     * @dependencies MultiSigHandlerInstance
      * @scenario
-     * - mock test data
-     * - run test and expect exception thrown
+     * - Generate a MultiSigHandler instance
+     * - Call addTx with a test transaction, required signs, boxes, and dataBoxes
+     * - Set system time to turnTime
+     * - Call handleMyTurn
+     * - Set system time to 0
+     * - Call handleMyTurn again
      * @expected
-     * - should throw `CommitmentMisMatch` error
+     * - sendMessage should have been called with a 'generateCommitment' message after the turn changes
      */
-    it('should throw error when stored commitment and transaction commitments are different', async () => {
-      const tx = mockPartialSignedTransaction();
-      const publishedCommitmentFirst =
-        MultiSigUtils.generatedCommitmentToPublishCommitment(
-          tx.commitments[0].to_json(),
-        );
-      const firstCommitmentPayload =
-        MultiSigUtils.generatedCommitmentToPublishCommitment(
-          tx.commitments[0].to_json(),
-        );
-      const publishedCommitmentSecond =
-        MultiSigUtils.generatedCommitmentToPublishCommitment(
-          tx.commitments[1].to_json(),
-        );
-
-      const transaction = {
-        boxes: tx.inputBoxes,
-        dataBoxes: [],
-        commitments: [publishedCommitmentFirst, publishedCommitmentSecond],
-        commitmentSigns: ['sign'],
-        createTime: 0,
-        requiredSigner: 2,
-        sign: {
-          signed: ['sign'],
-          simulated: ['simulated'],
-          transaction: new Uint8Array([2]),
-        },
-      };
-
-      // Changing publishedCommitment
-      firstCommitmentPayload[0][0].a = '11';
-
-      const payload = {
-        commitments: [
-          { index: 0, sign: 'sign', commitment: firstCommitmentPayload },
-          { index: 1, sign: 'sign', commitment: publishedCommitmentSecond },
-        ],
-        signed: [publicKeys[0]],
-        simulated: [publicKeys[1]],
-        tx: Buffer.from(tx.transaction.sigma_serialize_bytes()).toString(
-          'base64',
-        ),
-        txId: 'txid',
-      };
-
-      // run test and expect exception thrown
-      const handler = await generateMultiSigHandlerInstance(
-        '5bc1d17d0612e696a9138ab8e85ca2a02d0171440ec128a9ad557c28bd5ea046',
-        publicKeys.slice(0, 2),
-        undefined,
+    it('should ask for commitments from all peers if turn changes', async () => {
+      const handler = await TestUtils.generateMultiSigHandlerInstance(
+        testSecrets[0],
+        vi.fn(),
+        testPubs,
       );
-      await expect(async () => {
-        await handler.verifySignedPayload(transaction, payload);
-      }).rejects.toThrow(CommitmentMisMatch);
-    });
+      await TestUtils.addTx(handler, reduced, requiredSings, boxes, dataBoxes);
+      vi.setSystemTime(turnTime);
+      const sender = vi.fn();
+      vi.spyOn(handler as any, 'sendMessage').mockImplementation(sender);
+      await handler.handleMyTurn();
+      expect(sender).not.toHaveBeenCalled();
 
-    /**
-     * @target MultiSigHandler.verifySignedPayload should throw error
-     * when signed commitments and passed commitments are different
-     * @dependencies
-     * - MultiSigUtils
-     * @scenario
-     * - mock test data
-     * - run test and expect exception thrown
-     * @expected
-     * - should throw `CommitmentMisMatch` error
-     */
-    it('should throw error when signed commitments and passed commitments are different', async () => {
-      const tx = mockPartialSignedTransaction();
-      const transaction = {
-        boxes: tx.inputBoxes,
-        dataBoxes: [],
-        commitments: [],
-        commitmentSigns: ['sign'],
-        createTime: 0,
-        requiredSigner: 2,
-        sign: {
-          signed: ['sign'],
-          simulated: ['simulated'],
-          transaction: new Uint8Array([2]),
-        },
-      };
-      const publishedCommitmentFirst =
-        MultiSigUtils.generatedCommitmentToPublishCommitment(
-          tx.commitments[0].to_json(),
-        );
-      const publishedCommitmentSecond =
-        MultiSigUtils.generatedCommitmentToPublishCommitment(
-          tx.commitments[1].to_json(),
-        );
+      vi.setSystemTime(0);
+      await handler.handleMyTurn();
 
-      // Changing publishedCommitment
-      publishedCommitmentFirst[0][0].a = '11';
-
-      const payload = {
-        commitments: [
-          { index: 0, sign: 'sign', commitment: publishedCommitmentFirst },
-          { index: 1, sign: 'sign', commitment: publishedCommitmentSecond },
-        ],
-        signed: [publicKeys[0]],
-        simulated: [publicKeys[1]],
-        tx: Buffer.from(tx.transaction.sigma_serialize_bytes()).toString(
-          'base64',
-        ),
-        txId: 'txid',
-      };
-
-      // run test and expect exception thrown
-      const handler = await generateMultiSigHandlerInstance(
-        '168e8fee8ac6965832d6c1c17cdf60c1b582b09f293d8bd88231e32740e3b24f',
-        publicKeys.slice(0, 2),
+      expect(sender).toHaveBeenLastCalledWith(
+        'generateCommitment',
+        { txId: reduced.unsigned_tx().id().to_str() },
+        testPubs,
+        0,
       );
-      await expect(async () => {
-        await handler.verifySignedPayload(transaction, payload);
-      }).rejects.toThrow(CommitmentMisMatch);
-    });
-
-    /**
-     * @target MultiSigHandler.verifySignedPayload should not throw any error
-     * when transaction needs sign and commitments are correct
-     * @dependencies
-     * - MultiSigUtils
-     * @scenario
-     * - mock test data
-     * - run test
-     * @expected
-     * - only no error throws
-     */
-    it('should not throw any error when transaction needs sign and commitments are correct', async () => {
-      // mock test data
-      const tx = mockPartialSignedTransaction();
-      const publishedCommitment =
-        MultiSigUtils.generatedCommitmentToPublishCommitment(
-          tx.commitments[0].to_json(),
-        );
-
-      const transaction = {
-        boxes: tx.inputBoxes,
-        dataBoxes: [],
-        commitments: [publishedCommitment, undefined],
-        commitmentSigns: ['sign'],
-        createTime: 0,
-        requiredSigner: 2,
-        sign: {
-          signed: ['sign'],
-          simulated: ['simulated'],
-          transaction: new Uint8Array([2]),
-        },
-      };
-      const publishedCommitmentFirst =
-        MultiSigUtils.generatedCommitmentToPublishCommitment(
-          tx.commitments[0].to_json(),
-        );
-      const publishedCommitmentSecond =
-        MultiSigUtils.generatedCommitmentToPublishCommitment(
-          tx.commitments[1].to_json(),
-        );
-      const payload = {
-        commitments: [
-          { index: 0, sign: 'sign', commitment: publishedCommitmentFirst },
-          { index: 1, sign: 'sign', commitment: publishedCommitmentSecond },
-        ],
-        signed: [publicKeys[0]],
-        simulated: [publicKeys[1]],
-        tx: Buffer.from(tx.transaction.sigma_serialize_bytes()).toString(
-          'base64',
-        ),
-        txId: 'txid',
-      };
-
-      // run test
-      const handler = await generateMultiSigHandlerInstance(
-        '168e8fee8ac6965832d6c1c17cdf60c1b582b09f293d8bd88231e32740e3b24f',
-        publicKeys.slice(0, 2),
-      );
-      await handler.verifySignedPayload(transaction, payload);
-    });
-
-    /**
-     * @target MultiSigHandler.verifySignedPayload should not throw any error
-     * when transaction does not need sign
-     * @dependencies
-     * - MultiSigUtils
-     * @scenario
-     * - mock test data
-     * - run test
-     * @expected
-     * - only no error throws
-     */
-    it('should not throw any error when transaction does not need sign', async () => {
-      // mock test data
-      const tx = mockPartialSignedTransaction();
-      const publishedCommitmentSecond =
-        MultiSigUtils.generatedCommitmentToPublishCommitment(
-          tx.commitments[1].to_json(),
-        );
-
-      const transaction = {
-        boxes: tx.inputBoxes,
-        dataBoxes: [],
-        commitments: [undefined, publishedCommitmentSecond],
-        commitmentSigns: ['sign'],
-        createTime: 0,
-        requiredSigner: 2,
-        sign: {
-          signed: [publicKeys[0]],
-          simulated: [publicKeys[1]],
-          transaction: new Uint8Array([2]),
-        },
-      };
-      const publishedCommitmentFirst =
-        MultiSigUtils.generatedCommitmentToPublishCommitment(
-          tx.commitments[0].to_json(),
-        );
-      const payload = {
-        commitments: [
-          { index: 0, sign: 'sign', commitment: publishedCommitmentFirst },
-          { index: 1, sign: 'sign', commitment: publishedCommitmentSecond },
-        ],
-        signed: [publicKeys[0]],
-        simulated: [publicKeys[1]],
-        tx: Buffer.from(tx.transaction.sigma_serialize_bytes()).toString(
-          'base64',
-        ),
-        txId: 'txid',
-      };
-
-      // run test
-      const handler = await generateMultiSigHandlerInstance(
-        '168e8fee8ac6965832d6c1c17cdf60c1b582b09f293d8bd88231e32740e3b24f',
-        publicKeys.slice(0, 2),
-      );
-      await handler.verifySignedPayload(transaction, payload);
-    });
-  });
-
-  describe('processResolve', () => {
-    /**
-     * @target: verify that when transaction sign is invalid sign process must be rejected
-     * @dependency:
-     * - TxQueue with invalid signed transaction
-     * @scenario:
-     * - call processResolve
-     * @expected:
-     * - resolve must not be called.
-     * - reject must be called once
-     */
-    it('should reject signing process when transaction sign is invalid', async () => {
-      const handler = await generateMultiSigHandlerInstance(
-        '5bc1d17d0612e696a9138ab8e85ca2a02d0171440ec128a9ad557c28bd5ea046',
-        publicKeys,
-      );
-      promiseCallback.resolved = 0;
-      promiseCallback.rejected = 0;
-      await handler.processResolve(invalidTx);
-      expect(promiseCallback.resolved).to.be.eql(0);
-      expect(promiseCallback.rejected).to.be.eql(1);
-    });
-
-    /**
-     * @target: verify that when transaction sign is valid sign process must be resolved
-     * @dependency:
-     * - TxQueue with valid signed transaction
-     * @scenario:
-     * - call processResolve
-     * @expected:
-     * - resolve must be called once.
-     * - reject must not be called.
-     */
-    it('should resolve signing process when transaction sign is valid', async () => {
-      const handler = await generateMultiSigHandlerInstance(
-        '5bc1d17d0612e696a9138ab8e85ca2a02d0171440ec128a9ad557c28bd5ea046',
-        publicKeys,
-      );
-      promiseCallback.resolved = 0;
-      promiseCallback.rejected = 0;
-      await handler.processResolve(validTx);
-      expect(promiseCallback.resolved).to.be.eql(1);
-      expect(promiseCallback.rejected).to.be.eql(0);
     });
   });
 });
