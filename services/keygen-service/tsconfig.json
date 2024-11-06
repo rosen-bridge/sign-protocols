@@ -17,6 +17,7 @@
     "outDir": "./dist"
   },
   "include": ["./**/*.ts"],
+  "exclude": ["dist"],
   "ts-node": {
     "esm": true
   }
