@@ -5,6 +5,8 @@ import { GuardDetection, ActiveGuard } from '@rosen-bridge/detection';
 export interface SignerBaseConfig {
   logger?: AbstractLogger;
   guardsPk: Array<string>;
+  signingCrypto: string;
+  messageEnc: EncryptionHandler;
   submitMsg: (message: string, guards: Array<string>) => unknown;
   messageValidDuration?: number;
   timeoutSeconds?: number;
@@ -20,17 +22,7 @@ export interface SignerBaseConfig {
   signPerRoundLimit?: number;
 }
 
-export interface SignerConfig extends SignerBaseConfig {
-  signer: EncryptionHandler;
-}
-
-export interface EcdsaConfig extends SignerBaseConfig {
-  secret: string;
-}
-
-export interface EddsaConfig extends SignerBaseConfig {
-  secret: string;
-}
+export type SignerConfig = Omit<SignerBaseConfig, 'signingCrypto'>;
 
 export interface Sign {
   msg: string;

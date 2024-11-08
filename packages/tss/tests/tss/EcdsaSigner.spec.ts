@@ -18,11 +18,11 @@ describe('EcdsaSigner', () => {
      */
     it('should throw error when derivationPath is not defined', async () => {
       const sk = await ECDSA.randomKey();
-      const signer = new ECDSA(sk);
+      const ecdsaMessageEnc = new ECDSA(sk);
       vi.restoreAllMocks();
       vi.setSystemTime(new Date(currentTime));
       const detection = new GuardDetection({
-        signer: signer,
+        messageEnc: ecdsaMessageEnc,
         guardsPublicKey: [],
         submit: vi.fn(),
         getPeerId: () => Promise.resolve('myPeerId'),
@@ -30,7 +30,7 @@ describe('EcdsaSigner', () => {
       const ecdsaSigner = new EcdsaSigner({
         submitMsg: vi.fn(),
         callbackUrl: '',
-        secret: sk,
+        messageEnc: ecdsaMessageEnc,
         detection: detection,
         guardsPk: [],
         tssApiUrl: '',

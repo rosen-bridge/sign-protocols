@@ -1,12 +1,13 @@
-import { EdDSA } from '@rosen-bridge/encryption';
-import { EddsaConfig, Sign, SignResult } from '../types/signer';
+import { Sign, SignerConfig, SignResult } from '../types/signer';
 import { TssSigner } from './TssSigner';
 
 export class EddsaSigner extends TssSigner {
-  constructor(config: EddsaConfig) {
+  constructor(config: SignerConfig) {
     super({
       logger: config.logger,
       guardsPk: config.guardsPk,
+      signingCrypto: 'eddsa',
+      messageEnc: config.messageEnc,
       submitMsg: config.submitMsg,
       messageValidDuration: config.messageValidDuration,
       timeoutSeconds: config.timeoutSeconds,
@@ -20,7 +21,6 @@ export class EddsaSigner extends TssSigner {
       thresholdTTL: config.thresholdTTL,
       responseDelay: config.responseDelay,
       signPerRoundLimit: config.signPerRoundLimit,
-      signer: new EdDSA(config.secret),
     });
   }
 

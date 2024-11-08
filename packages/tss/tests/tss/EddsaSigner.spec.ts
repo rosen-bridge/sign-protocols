@@ -18,11 +18,11 @@ describe('EddsaSigner', () => {
      */
     it('should throw error when derivationPath is defined', async () => {
       const sk = await EdDSA.randomKey();
-      const signer = new EdDSA(sk);
+      const eddsaMessageEnc = new EdDSA(sk);
       vi.restoreAllMocks();
       vi.setSystemTime(new Date(currentTime));
       const detection = new GuardDetection({
-        signer: signer,
+        messageEnc: eddsaMessageEnc,
         guardsPublicKey: [],
         submit: vi.fn(),
         getPeerId: () => Promise.resolve('myPeerId'),
@@ -30,7 +30,7 @@ describe('EddsaSigner', () => {
       const eddsaSigner = new EddsaSigner({
         submitMsg: vi.fn(),
         callbackUrl: '',
-        secret: sk,
+        messageEnc: eddsaMessageEnc,
         detection: detection,
         guardsPk: [],
         tssApiUrl: '',

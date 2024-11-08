@@ -13,19 +13,19 @@ import { beforeEach, describe, expect, it, MockInstance, vi } from 'vitest';
 describe('TssSigner', () => {
   let signer: TestTssSigner;
   let mockSubmit = vi.fn();
-  let guardSigners: Array<EdDSA>;
+  let guardMessageEncs: Array<EdDSA>;
   let detection: GuardDetection;
   const currentTime = 1686286005068;
   const timestamp = Math.floor(currentTime / 1000);
 
   beforeEach(async () => {
     const signers = await generateSigners();
-    guardSigners = signers.guardSigners;
+    guardMessageEncs = signers.guardSigners;
     vi.restoreAllMocks();
     vi.setSystemTime(new Date(currentTime));
     mockSubmit = vi.fn();
     detection = new GuardDetection({
-      signer: guardSigners[0],
+      messageEnc: guardMessageEncs[0],
       guardsPublicKey: signers.guardPks,
       submit: mockSubmit,
       getPeerId: () => Promise.resolve('myPeerId'),
@@ -33,7 +33,8 @@ describe('TssSigner', () => {
     signer = new TestTssSigner({
       submitMsg: mockSubmit,
       callbackUrl: '',
-      signer: guardSigners[0],
+      signingCrypto: 'eddsa',
+      messageEnc: guardMessageEncs[0],
       detection: detection,
       guardsPk: signers.guardPks,
       tssApiUrl: '',
@@ -468,13 +469,13 @@ describe('TssSigner', () => {
      */
     it('should return list of unknown guards', async () => {
       const myActiveGuards = [
-        { peerId: 'peerId-1', publicKey: await guardSigners[1].getPk() },
-        { peerId: 'peerId-2', publicKey: await guardSigners[2].getPk() },
-        { peerId: 'peerId-3', publicKey: await guardSigners[3].getPk() },
+        { peerId: 'peerId-1', publicKey: await guardMessageEncs[1].getPk() },
+        { peerId: 'peerId-2', publicKey: await guardMessageEncs[2].getPk() },
+        { peerId: 'peerId-3', publicKey: await guardMessageEncs[3].getPk() },
       ];
       const unknownGuard = {
         peerId: 'peerId-4',
-        publicKey: await guardSigners[4].getPk(),
+        publicKey: await guardMessageEncs[4].getPk(),
       };
       const requestedGuard = [...myActiveGuards, unknownGuard];
       vi.spyOn(detection, 'activeGuards').mockResolvedValue(myActiveGuards);
@@ -495,13 +496,13 @@ describe('TssSigner', () => {
      */
     it('should return list of unknown guards', async () => {
       const myActiveGuards = [
-        { peerId: 'peerId-1', publicKey: await guardSigners[1].getPk() },
-        { peerId: 'peerId-2', publicKey: await guardSigners[2].getPk() },
-        { peerId: 'peerId-3', publicKey: await guardSigners[3].getPk() },
+        { peerId: 'peerId-1', publicKey: await guardMessageEncs[1].getPk() },
+        { peerId: 'peerId-2', publicKey: await guardMessageEncs[2].getPk() },
+        { peerId: 'peerId-3', publicKey: await guardMessageEncs[3].getPk() },
       ];
       const invalidGuard = {
         peerId: 'peerId-3-new',
-        publicKey: await guardSigners[3].getPk(),
+        publicKey: await guardMessageEncs[3].getPk(),
       };
       const requestedGuard = [...myActiveGuards.slice(0, 2), invalidGuard];
       vi.spyOn(detection, 'activeGuards').mockResolvedValue(myActiveGuards);
@@ -514,9 +515,9 @@ describe('TssSigner', () => {
     let activeGuards: Array<ActiveGuard>;
     beforeEach(async () => {
       activeGuards = [
-        { peerId: 'peerId-1', publicKey: await guardSigners[1].getPk() },
-        { peerId: 'peerId-2', publicKey: await guardSigners[2].getPk() },
-        { peerId: 'peerId-3', publicKey: await guardSigners[3].getPk() },
+        { peerId: 'peerId-1', publicKey: await guardMessageEncs[1].getPk() },
+        { peerId: 'peerId-2', publicKey: await guardMessageEncs[2].getPk() },
+        { peerId: 'peerId-3', publicKey: await guardMessageEncs[3].getPk() },
       ];
       vi.spyOn(detection, 'activeGuards').mockResolvedValue(activeGuards);
       signer.getSigns().push({
@@ -638,7 +639,7 @@ describe('TssSigner', () => {
         .mockResolvedValue();
       const guards = [
         ...activeGuards,
-        { peerId: 'peerId-4', publicKey: await guardSigners[4].getPk() },
+        { peerId: 'peerId-4', publicKey: await guardMessageEncs[4].getPk() },
       ];
       const payload: SignRequestPayload = {
         msg: 'test message',
@@ -655,7 +656,7 @@ describe('TssSigner', () => {
       expect(mockSubmit).toHaveBeenCalledTimes(0);
       expect(mockedRegister).toHaveBeenCalledWith(
         'peerId-4',
-        await guardSigners[4].getPk(),
+        await guardMessageEncs[4].getPk(),
         expect.anything(),
       );
       const callback = mockedRegister.mock.calls[0][2];
@@ -693,7 +694,7 @@ describe('TssSigner', () => {
         msg: 'test message',
         guards: [
           ...activeGuards,
-          { peerId: 'peerId-4', publicKey: await guardSigners[4].getPk() },
+          { peerId: 'peerId-4', publicKey: await guardMessageEncs[4].getPk() },
         ],
       };
       await signer.mockedHandleRequestMessage(
@@ -901,9 +902,9 @@ describe('TssSigner', () => {
     let activeGuards: Array<ActiveGuard>;
     beforeEach(async () => {
       activeGuards = [
-        { peerId: 'peerId-1', publicKey: await guardSigners[1].getPk() },
-        { peerId: 'peerId-2', publicKey: await guardSigners[2].getPk() },
-        { peerId: 'peerId-3', publicKey: await guardSigners[3].getPk() },
+        { peerId: 'peerId-1', publicKey: await guardMessageEncs[1].getPk() },
+        { peerId: 'peerId-2', publicKey: await guardMessageEncs[2].getPk() },
+        { peerId: 'peerId-3', publicKey: await guardMessageEncs[3].getPk() },
       ];
       signer.getSigns().push({
         msg: 'test message',
@@ -934,7 +935,7 @@ describe('TssSigner', () => {
      * - inserted sign must contain new signature only
      */
     it('should add guard sign to sign object when all conditions are met and signs are not enough', async () => {
-      vi.spyOn(guardSigners[0], 'verify').mockResolvedValue(true);
+      vi.spyOn(guardMessageEncs[0], 'verify').mockResolvedValue(true);
       vi.spyOn(signer as any, 'updateThreshold').mockResolvedValue(undefined);
       (signer as any).threshold = { expiry: 0, value: 7 };
       await signer.mockedHandleApproveMessage(
@@ -975,7 +976,7 @@ describe('TssSigner', () => {
           .fill('')
           .map(async (item, index) => ({
             peerId: `peerId-${index}`,
-            publicKey: await guardSigners[index].getPk(),
+            publicKey: await guardMessageEncs[index].getPk(),
           })),
       );
       vi.spyOn(signer as any, 'getApprovedGuards').mockResolvedValue(
@@ -1126,7 +1127,7 @@ describe('TssSigner', () => {
         chainCode: 'chainCode',
       });
       activeGuards = await Promise.all(
-        guardSigners.map(async (item, index) => ({
+        guardMessageEncs.map(async (item, index) => ({
           peerId: `peerId-${index}`,
           publicKey: await item.getPk(),
         })),
@@ -1413,7 +1414,7 @@ describe('TssSigner', () => {
         {
           guards: [
             {
-              publicKey: await guardSigners[1].getPk(),
+              publicKey: await guardMessageEncs[1].getPk(),
               peerId: 'peer-Id1',
             },
           ],
@@ -1461,13 +1462,13 @@ describe('TssSigner', () => {
      * - returned list must be empty
      */
     it('should not return selected guard when signature is invalid', async () => {
-      vi.spyOn(guardSigners[0], 'verify').mockResolvedValue(false);
+      vi.spyOn(guardMessageEncs[0], 'verify').mockResolvedValue(false);
       const res = await signer.mockedGetApprovedGuards(
         timestamp,
         {
           guards: [
             {
-              publicKey: await guardSigners[0].getPk(),
+              publicKey: await guardMessageEncs[0].getPk(),
               peerId: 'peer-Id1',
             },
           ],
@@ -1489,10 +1490,10 @@ describe('TssSigner', () => {
      * - returned list must contain entered guard
      */
     it('should return selected guard when signature is valid', async () => {
-      vi.spyOn(guardSigners[0], 'verify').mockResolvedValue(true);
+      vi.spyOn(guardMessageEncs[0], 'verify').mockResolvedValue(true);
       const guards = [
         {
-          publicKey: await guardSigners[0].getPk(),
+          publicKey: await guardMessageEncs[0].getPk(),
           peerId: 'peer-Id1',
         },
       ];

@@ -12,7 +12,6 @@ import {
 } from './types';
 import { turnTime } from './const';
 import { Semaphore } from 'await-semaphore';
-import { ECDSA } from '@rosen-bridge/encryption';
 import { MultiSigUtils } from './MultiSigUtils';
 import { AbstractLogger, DummyLogger } from '@rosen-bridge/abstract-logger';
 import { ActiveGuard, GuardDetection } from '@rosen-bridge/detection';
@@ -33,7 +32,7 @@ export class MultiSigHandler extends Communicator {
   constructor(config: ErgoMultiSigConfig) {
     super(
       config.logger ? config.logger : new DummyLogger(),
-      new ECDSA(config.secretHex),
+      config.messageEnc,
       config.submit,
       config.guardsPk,
     );

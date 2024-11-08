@@ -5,7 +5,7 @@ import { guardMessageValidTimeoutDefault } from './const/const';
 
 export abstract class Communicator {
   protected logger: AbstractLogger;
-  protected signer: EncryptionHandler;
+  protected messageEnc: EncryptionHandler;
   private readonly submitMessage: (
     msg: string,
     peers: Array<string>,
@@ -21,13 +21,13 @@ export abstract class Communicator {
 
   protected constructor(
     logger: AbstractLogger,
-    signer: EncryptionHandler,
+    messageEnc: EncryptionHandler,
     submitMessage: (msg: string, peers: Array<string>) => unknown,
     guardPks: Array<string>,
     messageValidDurationSeconds?: number,
   ) {
     this.logger = logger;
-    this.signer = signer;
+    this.messageEnc = messageEnc;
     this.guardPks = guardPks;
     this.submitMessage = submitMessage;
     this.messageValidDuration = messageValidDurationSeconds
@@ -40,7 +40,7 @@ export abstract class Communicator {
    */
   protected getIndex = async () => {
     if (this.index === -1) {
-      const pk = await this.signer.getPk();
+      const pk = await this.messageEnc.getPk();
       this.index = this.guardPks.indexOf(pk);
     }
     return this.index;
@@ -66,8 +66,8 @@ export abstract class Communicator {
    * @param timestamp
    */
   signPayload = async (payload: any, timestamp: number) => {
-    const publicKey = await this.signer.getPk();
-    return await this.signer.sign(
+    const publicKey = await this.messageEnc.getPk();
+    return await this.messageEnc.sign(
       Communicator.generatePayloadToSign(payload, timestamp, publicKey),
     );
   };
@@ -92,7 +92,7 @@ export abstract class Communicator {
       )} to ${JSON.stringify(peers)}`,
     );
     timestamp = timestamp ? timestamp : this.getDate();
-    const publicKey = await this.signer.getPk();
+    const publicKey = await this.messageEnc.getPk();
     const payloadSign = await this.signPayload(payload, timestamp);
     const message: CommunicationMessage = {
       type: messageType,
@@ -142,7 +142,7 @@ export abstract class Communicator {
       return;
     }
     if (
-      !(await this.signer.verify(
+      !(await this.messageEnc.verify(
         Communicator.generatePayloadToSign(
           msg.payload,
           msg.timestamp,
