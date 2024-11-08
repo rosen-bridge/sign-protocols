@@ -1,5 +1,18 @@
 # @rosen-bridge/tss
 
+## 4.0.0
+
+### Major Changes
+
+- Refactor constructor interfaces, add messageEnc and remove unnecessary secrets
+- split communication, detection and encryption packages
+
+### Patch Changes
+
+- Updated dependencies
+  - @rosen-bridge/communication@1.0.0
+  - @rosen-bridge/detection@1.0.0
+
 ## 3.0.1
 
 ### Patch Changes
