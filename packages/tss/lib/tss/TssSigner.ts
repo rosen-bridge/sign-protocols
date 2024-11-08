@@ -3,7 +3,7 @@ import {
   PendingSign,
   Sign,
   SignApprovePayload,
-  SignerConfig,
+  SignerBaseConfig,
   SignMessageType,
   SignRequestPayload,
   SignResult,
@@ -32,6 +32,7 @@ import axios, { AxiosInstance } from 'axios';
 export abstract class TssSigner extends Communicator {
   protected readonly axios: AxiosInstance;
   protected readonly callbackUrl: string;
+  protected readonly signingCrypto: string;
   protected threshold: Threshold;
   protected readonly thresholdTTL: number;
   protected readonly turnDuration: number;
@@ -56,7 +57,7 @@ export abstract class TssSigner extends Communicator {
     try {
       if (this.threshold.expiry < Date.now()) {
         const res = await this.axios.get<{ threshold: number }>(thresholdUrl, {
-          params: { crypto: this.signer.getCrypto() },
+          params: { crypto: this.signingCrypto },
         });
         const threshold = res.data.threshold + 1;
         this.detection.setNeedGuardThreshold(threshold);
@@ -75,10 +76,10 @@ export abstract class TssSigner extends Communicator {
     }
   };
 
-  constructor(config: SignerConfig) {
+  constructor(config: SignerBaseConfig) {
     super(
       config.logger ? config.logger : new DummyLogger(),
-      config.signer,
+      config.messageEnc,
       config.submitMsg,
       config.guardsPk,
       config.messageValidDuration,
@@ -86,6 +87,7 @@ export abstract class TssSigner extends Communicator {
     this.axios = axios.create({
       baseURL: config.tssApiUrl,
     });
+    this.signingCrypto = config.signingCrypto;
     this.callbackUrl = config.callbackUrl;
     this.detection = config.detection;
     this.turnDuration = config.turnDurationSeconds
@@ -486,7 +488,7 @@ export abstract class TssSigner extends Communicator {
       );
       return;
     }
-    const myPk = await this.signer.getPk();
+    const myPk = await this.messageEnc.getPk();
 
     if (sign.request && !this.isNoWorkTime()) {
       return await this.signAccessMutex.acquire().then(async (release) => {
@@ -569,7 +571,7 @@ export abstract class TssSigner extends Communicator {
       guards: payload.guards,
       initGuardIndex: guardIndex,
     };
-    const myPk = await this.signer.getPk();
+    const myPk = await this.messageEnc.getPk();
     if (payload.guards.filter((item) => item.publicKey === myPk).length == 0) {
       this.logger.warn(
         `Got a request to sign message from [${sender}] but I'm not involved`,
@@ -608,7 +610,7 @@ export abstract class TssSigner extends Communicator {
           if (index === -1) return undefined;
           const sign = signs[index];
           if (sign === '') return undefined;
-          const verifiedSign = await this.signer.verify(
+          const verifiedSign = await this.messageEnc.verify(
             TssSigner.generatePayloadToSign(
               payload,
               timestamp,
@@ -639,7 +641,7 @@ export abstract class TssSigner extends Communicator {
           p2pID: item.peerId,
         })),
         message: message,
-        crypto: this.signer.getCrypto(),
+        crypto: this.signingCrypto,
         operationTimeout: remainingTime - this.responseDelay,
         callBackUrl: this.callbackUrl,
         chainCode: sign.chainCode,

@@ -28,10 +28,10 @@ class TestUtils {
     });
     const pubKeys = pks ? pks : testPubs;
     const secretInd = testSecrets.indexOf(secret);
-    const ecdsaSigner = new ECDSA(testSecrets[secretInd]);
+    const ecdsaMessageEnc = new ECDSA(testSecrets[secretInd]);
     const guardDetection = new GuardDetection({
       guardsPublicKey: pubKeys,
-      signer: ecdsaSigner,
+      messageEnc: ecdsaMessageEnc,
       submit: submit,
       getPeerId: () => Promise.resolve(testPubs[secretInd]),
     });
@@ -43,6 +43,7 @@ class TestUtils {
 
     return new MultiSigHandler({
       multiSigUtilsInstance: multiSigUtilsInstance,
+      messageEnc: ecdsaMessageEnc,
       secretHex: secret,
       txSignTimeout: TestConfigs.txSignTimeout,
       multiSigFirstSignDelay: TestConfigs.multiSigFirstSignDelay,

@@ -39,7 +39,7 @@ export class GuardDetection extends Communicator {
   constructor(config: GuardDetectionConfig) {
     super(
       config.logger ? config.logger : new DummyLogger(),
-      config.signer,
+      config.messageEnc,
       config.submit,
       config.guardsPublicKey,
       config.messageValidDurationSeconds,
@@ -322,7 +322,7 @@ export class GuardDetection extends Communicator {
    */
   activeGuards = async (): Promise<Array<ActiveGuard>> => {
     const myActiveGuard: ActiveGuard = {
-      publicKey: await this.signer.getPk(),
+      publicKey: await this.messageEnc.getPk(),
       peerId: await this.getPeerId(),
     };
     return [

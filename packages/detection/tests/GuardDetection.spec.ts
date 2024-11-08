@@ -12,16 +12,16 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 describe('GuardDetection', () => {
   let detection: TestGuardDetection;
   let mockSubmit = vi.fn();
-  let guardSigners: Array<EdDSA>;
+  let guardMessageEncs: Array<EdDSA>;
 
   beforeEach(async () => {
     const signers = await generateSigners();
-    guardSigners = signers.guardSigners;
+    guardMessageEncs = signers.guardSigners;
     vi.resetAllMocks();
     mockSubmit = vi.fn();
     detection = new TestGuardDetection({
       submit: mockSubmit,
-      signer: guardSigners[0],
+      messageEnc: guardMessageEncs[0],
       guardsPublicKey: signers.guardPks,
       getPeerId: () => Promise.resolve('myPeerId'),
     });
@@ -241,7 +241,7 @@ describe('GuardDetection', () => {
       const info = detection.getInfo();
       const currentTime = 1685683141;
       vi.setSystemTime(new Date(currentTime * 1000));
-      const myPk = await guardSigners[0].getPk();
+      const myPk = await guardMessageEncs[0].getPk();
       info.forEach((item, index) => {
         if (item.publicKey !== myPk) {
           item.lastUpdate = currentTime;
@@ -294,7 +294,7 @@ describe('GuardDetection', () => {
       const callback = vi.fn();
       await detection.register(
         'peerId-1',
-        await guardSigners[1].getPk(),
+        await guardMessageEncs[1].getPk(),
         callback,
       );
       await expect(callback).toHaveBeenCalledTimes(1);
@@ -320,7 +320,7 @@ describe('GuardDetection', () => {
       const callback = vi.fn();
       await detection.register(
         'peerId-1',
-        await guardSigners[1].getPk(),
+        await guardMessageEncs[1].getPk(),
         callback,
       );
       await expect(callback).toHaveBeenCalledTimes(1);
@@ -340,7 +340,7 @@ describe('GuardDetection', () => {
     it('should call send message if guard is not in active state', async () => {
       await detection.register(
         'peerId-1',
-        await guardSigners[1].getPk(),
+        await guardMessageEncs[1].getPk(),
         vi.fn(),
       );
       expect(mockSubmit).toHaveBeenCalledTimes(1);
@@ -368,12 +368,12 @@ describe('GuardDetection', () => {
       vi.spyOn(detection as any, 'addNonce').mockReturnValue('new nonce');
       await detection.mockedHandleRegister(
         { nonce: 'random nonce' },
-        await guardSigners[1].getPk(),
+        await guardMessageEncs[1].getPk(),
         1,
       );
       expect(mockSubmit).toHaveBeenCalledTimes(1);
       expect(mockSubmit).toHaveBeenCalledWith(expect.any(String), [
-        await guardSigners[1].getPk(),
+        await guardMessageEncs[1].getPk(),
       ]);
       const msg = JSON.parse(mockSubmit.mock.calls[0][0]);
       expect(msg.type).toEqual(approveMessage);

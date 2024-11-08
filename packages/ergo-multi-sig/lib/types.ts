@@ -2,6 +2,7 @@ import * as wasm from 'ergo-lib-wasm-nodejs';
 import { AbstractLogger } from '@rosen-bridge/abstract-logger';
 import { MultiSigUtils } from './MultiSigUtils';
 import { GuardDetection } from '@rosen-bridge/detection';
+import { EncryptionHandler } from '@rosen-bridge/encryption';
 
 interface Signer {
   id?: string;
@@ -107,6 +108,7 @@ export enum MessageType {
 interface ErgoMultiSigConfig {
   logger?: AbstractLogger;
   multiSigUtilsInstance: MultiSigUtils;
+  messageEnc: EncryptionHandler;
   secretHex: string;
   txSignTimeout: number;
   multiSigFirstSignDelay?: number;

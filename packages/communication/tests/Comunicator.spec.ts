@@ -5,19 +5,23 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 describe('Communicator', () => {
   let communicator: TestCommunicator;
   let mockSubmit = vi.fn();
-  let guardSigners: Array<EdDSA>;
+  let guardMessageEncs: Array<EdDSA>;
   const payload = { foo: 'bar' };
 
   beforeEach(async () => {
-    guardSigners = [];
+    guardMessageEncs = [];
     const guardPks: Array<string> = [];
     for (let index = 0; index < 10; index++) {
       const sk = new EdDSA(await EdDSA.randomKey());
-      guardSigners.push(sk);
+      guardMessageEncs.push(sk);
       guardPks.push(await sk.getPk());
     }
     mockSubmit = vi.fn();
-    communicator = new TestCommunicator(guardSigners[1], mockSubmit, guardPks);
+    communicator = new TestCommunicator(
+      guardMessageEncs[1],
+      mockSubmit,
+      guardPks,
+    );
   });
 
   describe('getDate', () => {
@@ -51,8 +55,8 @@ describe('Communicator', () => {
      */
     it('should call submit message', async () => {
       const currentTime = 1685683141;
-      const publicKey = await guardSigners[1].getPk();
-      const sign = await guardSigners[1].sign(
+      const publicKey = await guardMessageEncs[1].getPk();
+      const sign = await guardMessageEncs[1].sign(
         `${JSON.stringify(payload)}${currentTime}${publicKey}`,
       );
       vi.spyOn(Date, 'now').mockReturnValue(currentTime * 1000);
@@ -84,8 +88,8 @@ describe('Communicator', () => {
      */
     it('should pass arguments to process message function when sign is valid', async () => {
       const currentTime = 1685683142;
-      const publicKey = await guardSigners[2].getPk();
-      const sign = await guardSigners[2].sign(
+      const publicKey = await guardMessageEncs[2].getPk();
+      const sign = await guardMessageEncs[2].sign(
         `${JSON.stringify(payload)}${currentTime}${publicKey}`,
       );
       vi.spyOn(Date, 'now').mockReturnValue(currentTime * 1000);
@@ -120,15 +124,15 @@ describe('Communicator', () => {
      */
     it('should not call processMessage when signature is not valid', async () => {
       const currentTime = 1685683143;
-      const publicKey = await guardSigners[2].getPk();
-      const sign = await guardSigners[2].sign(
+      const publicKey = await guardMessageEncs[2].getPk();
+      const sign = await guardMessageEncs[2].sign(
         `${JSON.stringify(payload)}${currentTime}${publicKey}`,
       );
       vi.spyOn(Date, 'now').mockReturnValue(currentTime * 1000);
       const message = {
         type: 'message',
         payload: payload,
-        publicKey: await guardSigners[3].getPk(),
+        publicKey: await guardMessageEncs[3].getPk(),
         timestamp: currentTime,
         sign: sign,
         index: 3,
@@ -148,8 +152,8 @@ describe('Communicator', () => {
      */
     it('should not call processMessage when signer public key differ from index', async () => {
       const currentTime = 1685683144;
-      const publicKey = await guardSigners[2].getPk();
-      const sign = await guardSigners[2].sign(
+      const publicKey = await guardMessageEncs[2].getPk();
+      const sign = await guardMessageEncs[2].sign(
         `${JSON.stringify(payload)}${currentTime}${publicKey}`,
       );
       vi.spyOn(Date, 'now').mockReturnValue(currentTime * 1000);
@@ -177,8 +181,8 @@ describe('Communicator', () => {
      */
     it('should not call processMessage when message timed out', async () => {
       const currentTime = 1685683145;
-      const publicKey = await guardSigners[2].getPk();
-      const sign = await guardSigners[2].sign(
+      const publicKey = await guardMessageEncs[2].getPk();
+      const sign = await guardMessageEncs[2].sign(
         `${JSON.stringify(payload)}${currentTime - 60001}${publicKey}`,
       );
       vi.spyOn(Date, 'now').mockReturnValue(currentTime * 1000);

@@ -10,7 +10,7 @@ export interface ActiveGuard {
 export interface GuardDetectionConfig {
   logger?: AbstractLogger;
   guardsPublicKey: string[];
-  signer: EncryptionHandler;
+  messageEnc: EncryptionHandler;
   submit: (msg: string, peers: Array<string>) => unknown;
   activeTimeoutSeconds?: number;
   heartbeatTimeoutSeconds?: number;
