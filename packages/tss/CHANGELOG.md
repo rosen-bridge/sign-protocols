@@ -5,7 +5,7 @@
 ### Major Changes
 
 - Refactor constructor interfaces, add messageEnc and remove unnecessary secrets
-- split communication, detection and encryption packages
+- Split communication, detection and encryption packages
 
 ### Patch Changes
 
