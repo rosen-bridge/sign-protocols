@@ -1,6 +1,6 @@
 {
   "name": "@rosen-bridge/communication",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "abstractly manage communication between endpoints",
   "repository": "https://github.com/rosen-bridge/sign-protocols",
   "license": "GPL-3.0",
