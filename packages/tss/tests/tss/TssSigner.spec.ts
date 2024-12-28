@@ -5,6 +5,7 @@ import { TestTssSigner } from './TestTssSigner';
 import { generateSigners } from '../testUtils';
 import {
   approveMessage,
+  cachedMessage,
   requestMessage,
   startMessage,
 } from '../../lib/const/signer';
@@ -136,6 +137,34 @@ describe('TssSigner', () => {
       });
       await (signer as any).cleanup();
       expect(signer.getPendingSigns().length).toEqual(1);
+    });
+  });
+
+  describe('addSignToCache', () => {
+    /**
+     * @target TssSigner.addSignToCache should add SignResult to sign cache
+     * @dependencies
+     * @scenario
+     * - mock ttl
+     * - call addSignToCache with signature record
+     * - after ttl signature should be removed
+     * @expected
+     * - cache record must be available before ttl
+     * - cache record must be removed after ttl
+     */
+    it('should add SignResult to sign cache', async () => {
+      const msg = 'test message';
+      expect(Object.keys(signer.getSignCached()).length).toEqual(0);
+      signer.mockedAddSignToCache(
+        msg,
+        { signature: 'signature', signatureRecovery: '' },
+        0.2,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(signer.getSignCached()).toHaveProperty(msg);
+      expect(signer.getSignCached()[msg].signature).toEqual('signature');
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(Object.keys(signer.getSignCached()).length).toEqual(0);
     });
   });
 
@@ -563,6 +592,51 @@ describe('TssSigner', () => {
         msg: 'test message',
         guards: activeGuards,
         initGuardIndex: 6,
+      });
+      expect(msg.timestamp).toEqual(timestamp);
+    });
+
+    /**
+     * @target GuardDetection.handleRequestMessage should send cached message when all conditions are OK and signature exist in cache
+     * @dependencies
+     * @scenario
+     * - mock a list of active guards
+     * - mock sign cache
+     * - call mockedHandleRequestMessage with the message that exist in cache
+     * - check response
+     * @expected
+     * - send message called once with
+     *   - second argument with ['sender']
+     *   - first argument is a json
+     *     - type is cachedMessage
+     *     - payload is SignCachedPayload
+     *     - timestamp same as called timestamp
+     */
+    it('should send cached message when all conditions are OK and signature exist in cache', async () => {
+      signer.getSignCached()['test message'] = {
+        signature: 'signature',
+        signatureRecovery: undefined,
+      };
+      await signer.mockedHandleRequestMessage(
+        {
+          msg: 'test message',
+          guards: activeGuards,
+        },
+        'sender',
+        6,
+        timestamp,
+        true,
+      );
+      expect(mockSubmit).toHaveBeenCalledTimes(1);
+      expect(mockSubmit).toHaveBeenCalledWith(expect.any(String), ['sender']);
+      const msg = JSON.parse(mockSubmit.mock.calls[0][0]);
+      expect(msg.type).toEqual(cachedMessage);
+      expect(msg.payload).toEqual({
+        msg: 'test message',
+        guards: activeGuards,
+        initGuardIndex: 6,
+        signature: 'signature',
+        signatureRecovery: undefined,
       });
       expect(msg.timestamp).toEqual(timestamp);
     });
@@ -1114,6 +1188,77 @@ describe('TssSigner', () => {
     });
   });
 
+  describe('handleSignCachedMessage', () => {
+    let activeGuards: Array<ActiveGuard>;
+    const callback = vi.fn();
+
+    beforeEach(async () => {
+      activeGuards = [
+        { peerId: 'peerId-1', publicKey: await guardMessageEncs[1].getPk() },
+        { peerId: 'peerId-2', publicKey: await guardMessageEncs[2].getPk() },
+        { peerId: 'peerId-3', publicKey: await guardMessageEncs[3].getPk() },
+      ];
+      signer.getSigns().push({
+        msg: 'test message',
+        signs: Array(10).fill(''),
+        addedTime: timestamp,
+        callback: callback,
+        request: {
+          index: 0,
+          guards: activeGuards,
+          timestamp,
+        },
+        posted: false,
+        chainCode: 'chainCode',
+      });
+    });
+
+    /**
+     * @target GuardDetection.handleSignCachedMessage should call handleSuccessfulSign
+     * when another guard responds with cached message
+     * @dependencies
+     * @scenario
+     * - mock sign
+     * - call handleSignCachedMessage with cached message
+     * @expected
+     * - must verify signature
+     * - must call handleSuccessfulSign
+     * - must remove sign from sign array after handleSuccessfulSign
+     * - ignore messages that come after cached message for this sign
+     */
+    it('should call handleSuccessfulSign event when approving guards are less than threshold', async () => {
+      expect(signer.mockedGetSign('test message')).toBeDefined();
+
+      await signer.mockedHandleSignCachedMessage(
+        {
+          msg: 'test message',
+          guards: activeGuards,
+          initGuardIndex: 0,
+          signature: 'signature',
+          signatureRecovery: undefined,
+        },
+        'peerId-2',
+        2,
+        'random signature',
+      );
+
+      expect(signer.getSignCached()).toHaveProperty('test message');
+      expect(signer.getSignCached()['test message'].signature).toEqual(
+        'signature',
+      );
+
+      expect(signer.mockedGetSign('test message')).toBeUndefined();
+
+      expect(callback).toHaveBeenCalledTimes(1);
+      expect(callback).toHaveBeenCalledWith(
+        true,
+        undefined,
+        'signature',
+        undefined,
+      );
+    });
+  });
+
   describe('handleStartMessage', () => {
     let activeGuards: Array<ActiveGuard>;
     let mockedStartSign: MockInstance;
@@ -1332,7 +1477,7 @@ describe('TssSigner', () => {
     });
 
     /**
-     * @target GuardDetection.handleSignData should call callback function with success status and signature
+     * @target GuardDetection.handleSignData should cache success result and call callback function with success status and signature
      * @dependencies
      * @scenario
      * - add sign instance to list
@@ -1341,12 +1486,16 @@ describe('TssSigner', () => {
      * - callback function called once
      * - callback function called with true and undefined as message and signature
      */
-    it('should call callback function with success status and signature', async () => {
+    it('should cache success result and call callback function with success status and signature', async () => {
       await signer.handleSignData(
         StatusEnum.Success,
         'valid signing data',
         'signature',
         'signature recovery',
+      );
+      expect(signer.getSignCached()).toHaveProperty('valid signing data');
+      expect(signer.getSignCached()['valid signing data'].signature).toEqual(
+        'signature',
       );
       expect(callback).toHaveBeenCalledTimes(1);
       expect(callback).toHaveBeenCalledWith(

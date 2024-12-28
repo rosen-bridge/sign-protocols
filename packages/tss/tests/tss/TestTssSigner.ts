@@ -2,6 +2,7 @@ import {
   PendingSign,
   Sign,
   SignApprovePayload,
+  SignCachedPayload,
   SignRequestPayload,
   SignResult,
   SignStartPayload,
@@ -16,9 +17,25 @@ export class TestTssSigner extends TssSigner {
   getSigns = () => this.signs as Array<Sign>;
 
   /**
+   * get list of signatures in current object's cache
+   */
+  getSignCached = () => this.signCache as Record<string, SignResult>;
+
+  /**
    * get list of pending signs in current object
    */
   getPendingSigns = () => this.pendingSigns as Array<PendingSign>;
+
+  /**
+   * calling protected function addSignToCache
+   * @param message
+   * @param signResult
+   */
+  mockedAddSignToCache = (
+    message: string,
+    signResult: SignResult,
+    ttl?: number,
+  ) => this.addSignToCache(message, signResult, ttl);
 
   /**
    * calling protected function getUnknownGuards
@@ -99,6 +116,20 @@ export class TestTssSigner extends TssSigner {
     guardIndex: number,
     signature: string,
   ) => this.handleApproveMessage(payload, sender, guardIndex, signature);
+
+  /**
+   * calling protected function handleSignCachedMessage
+   * @param payload
+   * @param sender
+   * @param guardIndex
+   * @param signature
+   */
+  mockedHandleSignCachedMessage = (
+    payload: SignCachedPayload,
+    sender: string,
+    guardIndex: number,
+    signature: string,
+  ) => this.handleSignCachedMessage(payload, sender, guardIndex, signature);
 
   /**
    * calling protected function handleStartMessage

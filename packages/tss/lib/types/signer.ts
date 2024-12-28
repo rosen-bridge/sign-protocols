@@ -20,6 +20,7 @@ export interface SignerBaseConfig {
   thresholdTTL?: number;
   responseDelay?: number;
   signPerRoundLimit?: number;
+  signCacheTTLSeconds?: number;
 }
 
 export type SignerConfig = Omit<SignerBaseConfig, 'signingCrypto'>;
@@ -62,13 +63,21 @@ export interface SignApprovePayload {
   initGuardIndex: number;
 }
 
+export interface SignCachedPayload {
+  msg: string;
+  guards: Array<ActiveGuard>;
+  initGuardIndex: number;
+  signature: string;
+  signatureRecovery: string | undefined;
+}
+
 export interface SignStartPayload {
   msg: string;
   guards: Array<ActiveGuard>;
   signs: Array<string>;
 }
 
-export type SignMessageType = 'request' | 'approve' | 'start';
+export type SignMessageType = 'request' | 'approve' | 'cached' | 'start';
 
 export enum StatusEnum {
   Success = 'success',

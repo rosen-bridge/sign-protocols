@@ -3,6 +3,7 @@ import {
   PendingSign,
   Sign,
   SignApprovePayload,
+  SignCachedPayload,
   SignerBaseConfig,
   SignMessageType,
   SignRequestPayload,
@@ -20,6 +21,7 @@ import {
 } from '../const/const';
 import {
   approveMessage,
+  cachedMessage,
   requestMessage,
   signUrl,
   startMessage,
@@ -41,6 +43,7 @@ export abstract class TssSigner extends Communicator {
   protected readonly responseDelay: number;
   protected lastUpdateRound: number;
   protected signs: Array<Sign>;
+  protected signCache: Record<string, SignResult>;
   protected pendingSigns: Array<PendingSign>;
   protected readonly detection: GuardDetection;
   protected readonly getPeerId: () => Promise<string>;
@@ -48,6 +51,7 @@ export abstract class TssSigner extends Communicator {
   protected readonly signAccessMutex: Mutex;
   protected readonly shares: Array<string>;
   protected readonly signPerRoundLimit: number;
+  protected readonly signCacheTTLSeconds: number;
 
   /**
    * get threshold value from tss-api instance if threshold didn't set or expired and set for this and detection
@@ -110,11 +114,13 @@ export abstract class TssSigner extends Communicator {
     this.getPeerId = config.getPeerId;
     this.shares = config.shares;
     this.signs = [];
+    this.signCache = {};
     this.pendingSigns = [];
     this.pendingAccessMutex = new Mutex();
     this.signAccessMutex = new Mutex();
     this.responseDelay = config.responseDelay ?? 5;
     this.signPerRoundLimit = config.signPerRoundLimit ?? 2;
+    this.signCacheTTLSeconds = config.signCacheTTLSeconds ?? 7_200;
   }
 
   /**
@@ -132,6 +138,27 @@ export abstract class TssSigner extends Communicator {
       (pending) => pending.index === turn,
     );
     releasePending();
+  };
+
+  /**
+   * cache a signature
+   */
+  protected addSignToCache = (
+    message: string,
+    signResult: SignResult,
+    ttl?: number,
+  ) => {
+    if (message in this.signCache) {
+      this.logger.warn(`Got a signature to cache but it already exists`);
+      return;
+    }
+    this.signCache[message] = signResult;
+    setTimeout(
+      () => {
+        delete this.signCache[message];
+      },
+      (ttl ?? this.signCacheTTLSeconds) * 1000,
+    );
   };
 
   /**
@@ -227,6 +254,12 @@ export abstract class TssSigner extends Communicator {
     if (this.getSign(msg, true)) {
       throw Error('already signing this message');
     }
+
+    if (msg in this.signCache) {
+      callback(true, undefined, this.signCache[msg].signature);
+      return;
+    }
+
     const release = await this.signAccessMutex.acquire();
     this.logger.info(`adding new message [${msg}] to signing queue`);
     this.signs.push({
@@ -294,6 +327,13 @@ export abstract class TssSigner extends Communicator {
       case approveMessage:
         return this.handleApproveMessage(
           payload as SignApprovePayload,
+          peerId,
+          senderIndex,
+          sign,
+        );
+      case cachedMessage:
+        return this.handleSignCachedMessage(
+          payload as SignCachedPayload,
           peerId,
           senderIndex,
           sign,
@@ -397,7 +437,29 @@ export abstract class TssSigner extends Communicator {
           );
         }
       }
-      if (unknown.length === 0) {
+
+      if (unknown.length > 0) return;
+
+      if (sign.msg in this.signCache) {
+        this.logger.info(
+          `signing request for message [${sign.msg}] arrived and result exist in cache. sending signCached message`,
+        );
+
+        const responsePayload: SignCachedPayload = {
+          msg: payload.msg,
+          guards: payload.guards,
+          initGuardIndex: guardIndex,
+          signature: this.signCache[sign.msg].signature,
+          signatureRecovery: this.signCache[sign.msg].signatureRecovery,
+        };
+
+        await this.sendMessage(
+          cachedMessage,
+          responsePayload,
+          [sender],
+          timestamp,
+        );
+      } else {
         this.logger.info(
           `signing request for message [${sign.msg}] approved. sending approval message`,
         );
@@ -529,6 +591,56 @@ export abstract class TssSigner extends Communicator {
           this.logger.warn(
             `an error occurred while handling approve message: ${e}`,
           );
+        }
+        release();
+      });
+    } else {
+      this.logger.debug(
+        'new message arrived but current guard is in no-work-period',
+      );
+    }
+  };
+
+  /**
+   * handle sign cached message
+   * store the signature in local cache
+   * and call the callback
+   * @param payload
+   * @param sender
+   * @param guardIndex
+   * @param signature
+   */
+  protected handleSignCachedMessage = async (
+    payload: SignCachedPayload,
+    sender: string,
+    guardIndex: number,
+    signature: string,
+  ) => {
+    const sign = this.getSign(payload.msg);
+    if (!sign) {
+      this.logger.warn(
+        `sign cached message arrived but signing message not found [${payload.msg}]`,
+      );
+      return;
+    }
+
+    if (sign.request && !this.isNoWorkTime()) {
+      return this.signAccessMutex.acquire().then(async (release) => {
+        if (this.getSign(payload.msg)) {
+          // TODO: verify signature
+
+          this.addSignToCache(payload.msg, {
+            signature: payload.signature!,
+            signatureRecovery: payload.signatureRecovery,
+          });
+
+          await this.handleSuccessfulSign(
+            sign,
+            payload.signature!,
+            payload.signatureRecovery,
+          );
+
+          this.signs = this.signs.filter((item) => item.msg !== payload.msg);
         }
         release();
       });
@@ -684,6 +796,10 @@ export abstract class TssSigner extends Communicator {
       throw Error('Invalid message');
     }
     if (status === StatusEnum.Success) {
+      this.addSignToCache(message, {
+        signature: signature!,
+        signatureRecovery,
+      });
       await this.handleSuccessfulSign(sign, signature, signatureRecovery);
     } else {
       sign.callback(false, error);
