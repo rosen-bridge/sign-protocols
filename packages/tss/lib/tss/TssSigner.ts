@@ -447,8 +447,6 @@ export abstract class TssSigner extends Communicator {
 
         const responsePayload: SignCachedPayload = {
           msg: payload.msg,
-          guards: payload.guards,
-          initGuardIndex: guardIndex,
           signature: this.signCache[sign.msg].signature,
           signatureRecovery: this.signCache[sign.msg].signatureRecovery,
         };

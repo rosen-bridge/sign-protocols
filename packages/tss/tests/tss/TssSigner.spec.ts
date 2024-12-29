@@ -147,7 +147,7 @@ describe('TssSigner', () => {
      * @scenario
      * - mock ttl
      * - call addSignToCache with signature record
-     * - after ttl signature should be removed
+     * - check if record is in cache before and after ttl
      * @expected
      * - cache record must be available before ttl
      * - cache record must be removed after ttl
@@ -161,6 +161,38 @@ describe('TssSigner', () => {
         0.2,
       );
       await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(signer.getSignCached()).toHaveProperty(msg);
+      expect(signer.getSignCached()[msg].signature).toEqual('signature');
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(Object.keys(signer.getSignCached()).length).toEqual(0);
+    });
+
+    /**
+     * @target TssSigner.addSignToCache should return if message already is in cache
+     * @dependencies
+     * @scenario
+     * - mock signCache
+     * - call addSignToCache with signature record
+     * @expected
+     * - should return without touching the cache
+     */
+    it('should return if message already is in cache', async () => {
+      const msg = 'test message';
+      signer.mockedAddSignToCache(
+        msg,
+        { signature: 'signature', signatureRecovery: '' },
+        0.2,
+      );
+
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(Object.keys(signer.getSignCached()).length).toEqual(1);
+
+      signer.mockedAddSignToCache(
+        msg,
+        { signature: 'signature2', signatureRecovery: '' },
+        0.2,
+      );
+
       expect(signer.getSignCached()).toHaveProperty(msg);
       expect(signer.getSignCached()[msg].signature).toEqual('signature');
       await new Promise((resolve) => setTimeout(resolve, 100));
@@ -393,6 +425,25 @@ describe('TssSigner', () => {
     });
 
     /**
+     * @target TssSigner.sign should call back with cached signature if cache record is available
+     * @dependencies
+     * @scenario
+     * - mock signCache
+     * - call sign
+     * @expected
+     * - should call back with cached signature before all
+     */
+    it('should call back with cached signature if cache record is available', async () => {
+      expect(signer.getSigns().length).toEqual(0);
+      signer.getSignCached()['msg'] = {
+        signature: 'signature',
+        signatureRecovery: undefined,
+      };
+      await signer.callSign('msg', vi.fn(), 'chainCode');
+      expect(signer.getSigns().length).toEqual(0);
+    });
+
+    /**
      * @target TssSigner.sign should call handleRequestMessage if msg in pending state
      * @dependencies
      * @scenario
@@ -464,6 +515,23 @@ describe('TssSigner', () => {
         'peerId',
         1234,
       );
+      expect(mockedFn).toHaveBeenCalledTimes(1);
+      expect(mockedFn).toHaveBeenCalledWith({}, 'peerId', 1, 'sign');
+    });
+
+    /**
+     * @target TssSigner.processMessage should call handleSignCachedMessage
+     * when message type is cacheMessage
+     * @dependencies
+     * @scenario
+     * - mock handleSignCachedMessage
+     * - call processMessage
+     * @expected
+     * - mocked function must call with expected arguments
+     */
+    it('should call handleSignCachedMessage when message type is cacheMessage', async () => {
+      const mockedFn = ((signer as any).handleSignCachedMessage = vi.fn());
+      await signer.processMessage(cachedMessage, {}, 'sign', 1, 'peerId', 1234);
       expect(mockedFn).toHaveBeenCalledTimes(1);
       expect(mockedFn).toHaveBeenCalledWith({}, 'peerId', 1, 'sign');
     });
@@ -633,8 +701,6 @@ describe('TssSigner', () => {
       expect(msg.type).toEqual(cachedMessage);
       expect(msg.payload).toEqual({
         msg: 'test message',
-        guards: activeGuards,
-        initGuardIndex: 6,
         signature: 'signature',
         signatureRecovery: undefined,
       });
@@ -1214,8 +1280,7 @@ describe('TssSigner', () => {
     });
 
     /**
-     * @target GuardDetection.handleSignCachedMessage should call handleSuccessfulSign
-     * when another guard responds with cached message
+     * @target GuardDetection.handleSignCachedMessage should call handleSuccessfulSign even when approving guards are less than threshold
      * @dependencies
      * @scenario
      * - mock sign
@@ -1226,14 +1291,12 @@ describe('TssSigner', () => {
      * - must remove sign from sign array after handleSuccessfulSign
      * - ignore messages that come after cached message for this sign
      */
-    it('should call handleSuccessfulSign event when approving guards are less than threshold', async () => {
+    it('should call handleSuccessfulSign even when approving guards are less than threshold', async () => {
       expect(signer.mockedGetSign('test message')).toBeDefined();
 
       await signer.mockedHandleSignCachedMessage(
         {
           msg: 'test message',
-          guards: activeGuards,
-          initGuardIndex: 0,
           signature: 'signature',
           signatureRecovery: undefined,
         },
@@ -1256,6 +1319,62 @@ describe('TssSigner', () => {
         'signature',
         undefined,
       );
+    });
+
+    /**
+     * @target GuardDetection.handleSignCachedMessage should return if sign record doesn't exist
+     * @dependencies
+     * @scenario
+     * - call handleSignCachedMessage
+     * @expected
+     * - must check for sign existance
+     * - must return if it doesn't exist
+     */
+    it("should return if sign record doesn't exist", async () => {
+      await signer.mockedHandleSignCachedMessage(
+        {
+          msg: 'test message2',
+          signature: 'signature',
+          signatureRecovery: undefined,
+        },
+        'peerId-2',
+        2,
+        'random signature',
+      );
+
+      expect(signer.getSignCached()).not.toHaveProperty('test message2');
+      expect(callback).toHaveBeenCalledTimes(0);
+    });
+
+    /**
+     * @target TssSigner.handleSuccessfulSign should return when guard is in no-work time
+     * @dependencies
+     * @scenario
+     * - mock system time
+     * - call handleSuccessfulSign
+     * @expected
+     * - must return
+     */
+    it('should return when guard is in no-work time', async () => {
+      const currentTime = 1686285651068;
+      vi.setSystemTime(new Date(currentTime));
+      expect(signer.mockedIsNoWorkTime()).toBeTruthy();
+
+      expect(signer.mockedGetSign('test message')).toBeDefined();
+
+      await signer.mockedHandleSignCachedMessage(
+        {
+          msg: 'test message',
+          signature: 'signature',
+          signatureRecovery: undefined,
+        },
+        'peerId-2',
+        2,
+        'random signature',
+      );
+
+      expect(signer.mockedGetSign('test message')).toBeDefined();
+      expect(callback).toHaveBeenCalledTimes(0);
     });
   });
 

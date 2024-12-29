@@ -65,8 +65,6 @@ export interface SignApprovePayload {
 
 export interface SignCachedPayload {
   msg: string;
-  guards: Array<ActiveGuard>;
-  initGuardIndex: number;
   signature: string;
   signatureRecovery: string | undefined;
 }
