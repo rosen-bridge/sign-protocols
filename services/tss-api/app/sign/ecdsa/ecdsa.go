@@ -203,7 +203,7 @@ func (h *handler) StartParty(
 			}
 		}
 
-		il, extendedChildPk, err := derivingPubkeyFromPath(h.savedData.ECDSAPub, []byte(signMsg.ChainCode), signMsg.DerivationPath, tss.S256())
+		il, extendedChildPk, err := DerivingPubkeyFromPath(h.savedData.ECDSAPub, []byte(signMsg.ChainCode), signMsg.DerivationPath, tss.S256())
 
 		if err != nil {
 			return err
@@ -271,7 +271,7 @@ func (h *handler) GetData() ([]*big.Int, *big.Int) {
 
 // - derive on master pubKey according to bip32 (tss-lib modified version)
 // - return new keyDerivationDelta and extendedChildPk
-func derivingPubkeyFromPath(masterPub *crypto.ECPoint, chainCode []byte, path []uint32, ec elliptic.Curve) (*big.Int, *ckd.ExtendedKey, error) {
+func DerivingPubkeyFromPath(masterPub *crypto.ECPoint, chainCode []byte, path []uint32, ec elliptic.Curve) (*big.Int, *ckd.ExtendedKey, error) {
 	// build ecdsa key pair
 	pk := ecdsa.PublicKey{
 		Curve: ec,

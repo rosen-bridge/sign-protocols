@@ -92,7 +92,7 @@ func (f *storage) LoadEDDSAKeygen(peerHome string, p2pId string) (models.TssConf
 		}
 	}
 	keyFilePath := filepath.Join(filePath, keygenFile)
-	logging.Infof("key file path: %v", keyFilePath)
+	logging.Debugf("key file path: %v", keyFilePath)
 
 	// reading file
 	bz, err := ioutil.ReadFile(keyFilePath)
@@ -143,7 +143,7 @@ func (f *storage) LoadECDSAKeygen(peerHome string, p2pId string) (models.TssConf
 		}
 	}
 	keyFilePath := filepath.Join(filePath, keygenFile)
-	logging.Infof("key file path: %v", keyFilePath)
+	logging.Debugf("key file path: %v", keyFilePath)
 
 	// reading file
 	bz, err := ioutil.ReadFile(keyFilePath)

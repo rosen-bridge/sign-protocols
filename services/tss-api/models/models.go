@@ -44,6 +44,12 @@ type SignMessage struct {
 	DerivationPath   []uint32 `json:"derivationPath"`
 }
 
+type GetPublicKey struct {
+	Crypto         string   `json:"crypto" validate:"required"`
+	ChainCode      string   `json:"chainCode" validate:"required"`
+	DerivationPath []uint32 `json:"derivationPath"`
+}
+
 type Peer struct {
 	ShareID string `json:"shareID"`
 	P2PID   string `json:"p2pID"`
