@@ -98,9 +98,31 @@ type TssConfigEDDSA struct {
 	KeygenData eddsaKeygen.LocalPartySaveData `json:"keygenData"`
 }
 
+type EDDSAKeygenData struct {
+	TssConfig TssConfigEDDSA
+	PartyID   *tss.PartyID
+}
+
+func (d EDDSAKeygenData) IsEmpty() bool {
+	return d.TssConfig.MetaData.PeersCount == 0 &&
+		d.TssConfig.MetaData.Threshold == 0 &&
+		d.PartyID == nil
+}
+
 type TssConfigECDSA struct {
 	MetaData   MetaData                       `json:"metaData"`
 	KeygenData ecdsaKeygen.LocalPartySaveData `json:"keygenData"`
+}
+
+type ECDSAKeygenData struct {
+	TssConfig TssConfigECDSA
+	PartyID   *tss.PartyID
+}
+
+func (d ECDSAKeygenData) IsEmpty() bool {
+	return d.TssConfig.MetaData.PeersCount == 0 &&
+		d.TssConfig.MetaData.Threshold == 0 &&
+		d.PartyID == nil
 }
 
 type TssData struct {

@@ -99,23 +99,23 @@ func main() {
 	}
 
 	// setting up meta data if exist for eddsa
-	eddsaMetaData, _, err := tss.GetStorage().LoadEDDSAKeygen(tss.GetPeerHome(), tss.GetP2pId())
+	eddsaKeygenData, err := tss.GetStorage().LoadEDDSAKeygen(tss.GetPeerHome(), tss.GetP2pId())
 	if err != nil {
 		logging.Warn(err)
 	}
 
-	err = tss.SetMetaData(eddsaMetaData.MetaData, models.EDDSA)
+	err = tss.SetMetaData(eddsaKeygenData.TssConfig.MetaData, models.EDDSA)
 	if err != nil {
 		logging.Warn(models.EDDSANoMetaDataFoundError)
 	}
 
 	// setting up meta data if exist for ecdsa
-	ecdsaMetaData, _, err := tss.GetStorage().LoadECDSAKeygen(tss.GetPeerHome(), tss.GetP2pId())
+	ecdsaKeygenData, err := tss.GetStorage().LoadECDSAKeygen(tss.GetPeerHome(), tss.GetP2pId())
 	if err != nil {
 		logging.Warn(err)
 	}
 
-	err = tss.SetMetaData(ecdsaMetaData.MetaData, models.ECDSA)
+	err = tss.SetMetaData(ecdsaKeygenData.TssConfig.MetaData, models.ECDSA)
 	if err != nil {
 		logging.Warn(models.ECDSANoMetaDataFoundError)
 	}

@@ -202,12 +202,12 @@ func (r *rosenTss) StartNewSign(signMessage models.SignMessage) error {
 func (r *rosenTss) GetPublicKey(pkData models.GetPublicKey) (string, error) {
 	switch pkData.Crypto {
 	case models.EDDSA:
-		tssConfigEDDSA, _, err := r.GetStorage().LoadEDDSAKeygen(r.GetPeerHome(), r.GetP2pId())
+		eddsaKeygenData, err := r.GetStorage().LoadEDDSAKeygen(r.GetPeerHome(), r.GetP2pId())
 		if err != nil {
 			logging.Error(err)
 			return "", err
 		}
-		pub := tssConfigEDDSA.KeygenData.EDDSAPub
+		pub := eddsaKeygenData.TssConfig.KeygenData.EDDSAPub
 		compressedPublicKey := utils.GetPKFromEDDSAPub(pub.X(), pub.Y())
 		encodedPK := hex.EncodeToString(compressedPublicKey)
 		return encodedPK, nil
@@ -215,12 +215,12 @@ func (r *rosenTss) GetPublicKey(pkData models.GetPublicKey) (string, error) {
 		if len(pkData.DerivationPath) == 0 {
 			return "", fmt.Errorf(models.WrongDerivationPathError)
 		}
-		tssConfigECDSA, _, err := r.GetStorage().LoadECDSAKeygen(r.GetPeerHome(), r.GetP2pId())
+		ecdsaKeygenData, err := r.GetStorage().LoadECDSAKeygen(r.GetPeerHome(), r.GetP2pId())
 		if err != nil {
 			logging.Error(err)
 			return "", err
 		}
-		_, extendedChildPk, err := ecdsaSign.DerivingPubkeyFromPath(tssConfigECDSA.KeygenData.ECDSAPub, []byte(pkData.ChainCode), pkData.DerivationPath, tss.S256())
+		_, extendedChildPk, err := ecdsaSign.DerivingPubkeyFromPath(ecdsaKeygenData.TssConfig.KeygenData.ECDSAPub, []byte(pkData.ChainCode), pkData.DerivationPath, tss.S256())
 		if err != nil {
 			return "", err
 		}
