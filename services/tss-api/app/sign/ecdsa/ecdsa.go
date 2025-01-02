@@ -203,7 +203,7 @@ func (h *handler) StartParty(
 			}
 		}
 
-		il, extendedChildPk, err := derivingPubkeyFromPath(h.savedData.ECDSAPub, []byte(signMsg.ChainCode), signMsg.DerivationPath, tss.S256())
+		il, extendedChildPk, err := DerivingPubkeyFromPath(h.savedData.ECDSAPub, []byte(signMsg.ChainCode), signMsg.DerivationPath, tss.S256())
 
 		if err != nil {
 			return err
@@ -245,18 +245,18 @@ func (h *handler) StartParty(
 func (h *handler) LoadData(rosenTss _interface.RosenTss) (*tss.PartyID, error) {
 	_, err1 := rosenTss.GetMetaData(models.ECDSA)
 	if h.savedData.ShareID == nil || (err1 != nil && err1.Error() == models.ECDSANoMetaDataFoundError) {
-		data, pID, err := rosenTss.GetStorage().LoadECDSAKeygen(rosenTss.GetPeerHome(), rosenTss.GetP2pId())
+		data, err := rosenTss.GetStorage().LoadECDSAKeygen(rosenTss.GetPeerHome(), rosenTss.GetP2pId())
 		if err != nil {
 			logging.Error(err)
 			return nil, err
 		}
-		if pID == nil {
+		if data.PartyID == nil {
 			logging.Error("pID is nil")
 			return nil, fmt.Errorf("pID is nil")
 		}
-		h.savedData = data.KeygenData
-		h.pID = pID
-		err = rosenTss.SetMetaData(data.MetaData, models.ECDSA)
+		h.savedData = data.TssConfig.KeygenData
+		h.pID = data.PartyID
+		err = rosenTss.SetMetaData(data.TssConfig.MetaData, models.ECDSA)
 		if err != nil {
 			return nil, err
 		}
@@ -271,7 +271,7 @@ func (h *handler) GetData() ([]*big.Int, *big.Int) {
 
 // - derive on master pubKey according to bip32 (tss-lib modified version)
 // - return new keyDerivationDelta and extendedChildPk
-func derivingPubkeyFromPath(masterPub *crypto.ECPoint, chainCode []byte, path []uint32, ec elliptic.Curve) (*big.Int, *ckd.ExtendedKey, error) {
+func DerivingPubkeyFromPath(masterPub *crypto.ECPoint, chainCode []byte, path []uint32, ec elliptic.Curve) (*big.Int, *ckd.ExtendedKey, error) {
 	// build ecdsa key pair
 	pk := ecdsa.PublicKey{
 		Curve: ec,

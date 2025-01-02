@@ -18,11 +18,14 @@ import (
 type Storage interface {
 	makefilePath(peerHome string, protocol string) string
 	WriteData(data interface{}, peerHome string, fileFormat string, protocol string) error
-	LoadEDDSAKeygen(peerHome string, p2pId string) (models.TssConfigEDDSA, *tss.PartyID, error)
-	LoadECDSAKeygen(peerHome string, p2pId string) (models.TssConfigECDSA, *tss.PartyID, error)
+	LoadEDDSAKeygen(peerHome string, p2pId string) (models.EDDSAKeygenData, error)
+	LoadECDSAKeygen(peerHome string, p2pId string) (models.ECDSAKeygenData, error)
 }
 
-type storage struct{}
+type storage struct {
+	ecdsaKeygenData models.ECDSAKeygenData
+	eddsaKeygenData models.EDDSAKeygenData
+}
 
 var logging *zap.SugaredLogger
 
@@ -75,103 +78,118 @@ func (f *storage) WriteData(data interface{}, peerHome string, fileFormat string
 }
 
 //	Loads the EDDSA keygen data from the file
-func (f *storage) LoadEDDSAKeygen(peerHome string, p2pId string) (models.TssConfigEDDSA, *tss.PartyID, error) {
-	// locating file
-	var keygenFile string
+func (f *storage) LoadEDDSAKeygen(peerHome string, p2pId string) (models.EDDSAKeygenData, error) {
+	if !f.eddsaKeygenData.IsEmpty() {
+		return f.eddsaKeygenData, nil
+	} else {
+		// locating file
+		var keygenFile string
 
-	filePath := f.makefilePath(peerHome, models.EDDSA)
-	files, err := ioutil.ReadDir(filePath)
-	if err != nil || len(files) == 0 {
-		logging.Warnf("couldn't find eddsa keygen %v", err)
-		return models.TssConfigEDDSA{}, nil, errors.New(models.EDDSANoKeygenDataFoundError)
-	}
-
-	for _, File := range files {
-		if strings.Contains(File.Name(), "keygen") {
-			keygenFile = File.Name()
+		filePath := f.makefilePath(peerHome, models.EDDSA)
+		files, err := ioutil.ReadDir(filePath)
+		if err != nil || len(files) == 0 {
+			logging.Warnf("couldn't find eddsa keygen %v", err)
+			return models.EDDSAKeygenData{}, errors.New(models.EDDSANoKeygenDataFoundError)
 		}
-	}
-	keyFilePath := filepath.Join(filePath, keygenFile)
-	logging.Infof("key file path: %v", keyFilePath)
 
-	// reading file
-	bz, err := ioutil.ReadFile(keyFilePath)
-	if err != nil {
-		return models.TssConfigEDDSA{}, nil, errors.Wrapf(
-			err,
-			"could not open the file for party in the expected location: %s. run keygen first.", keyFilePath,
-		)
-	}
-	var tssConfig models.TssConfigEDDSA
-	if err = json.Unmarshal(bz, &tssConfig); err != nil {
-		return models.TssConfigEDDSA{}, nil, errors.Wrapf(
-			err,
-			"could not unmarshal data for party located at: %s", keyFilePath,
-		)
-	}
+		for _, File := range files {
+			if strings.Contains(File.Name(), "keygen") {
+				keygenFile = File.Name()
+			}
+		}
+		keyFilePath := filepath.Join(filePath, keygenFile)
+		logging.Debugf("key file path: %v", keyFilePath)
 
-	//creating data from file
-	for _, kbxj := range tssConfig.KeygenData.BigXj {
-		kbxj.SetCurve(tss.Edwards())
-	}
-	tssConfig.KeygenData.EDDSAPub.SetCurve(tss.Edwards())
-	id := p2pId
-	pMoniker := fmt.Sprintf("tssPeer/%s", p2pId)
-	partyID := tss.NewPartyID(id, pMoniker, tssConfig.KeygenData.ShareID)
+		// reading file
+		bz, err := ioutil.ReadFile(keyFilePath)
+		if err != nil {
+			return models.EDDSAKeygenData{}, errors.Wrapf(
+				err,
+				"could not open the file for party in the expected location: %s. run keygen first.", keyFilePath,
+			)
+		}
+		var tssConfig models.TssConfigEDDSA
+		if err = json.Unmarshal(bz, &tssConfig); err != nil {
+			return models.EDDSAKeygenData{}, errors.Wrapf(
+				err,
+				"could not unmarshal data for party located at: %s", keyFilePath,
+			)
+		}
 
-	var parties tss.UnSortedPartyIDs
-	parties = append(parties, partyID)
-	sortedPIDs := tss.SortPartyIDs(parties)
-	return tssConfig, sortedPIDs[0], nil
+		//creating data from file
+		for _, kbxj := range tssConfig.KeygenData.BigXj {
+			kbxj.SetCurve(tss.Edwards())
+		}
+		tssConfig.KeygenData.EDDSAPub.SetCurve(tss.Edwards())
+		id := p2pId
+		pMoniker := fmt.Sprintf("tssPeer/%s", p2pId)
+		partyID := tss.NewPartyID(id, pMoniker, tssConfig.KeygenData.ShareID)
+
+		var parties tss.UnSortedPartyIDs
+		parties = append(parties, partyID)
+		sortedPIDs := tss.SortPartyIDs(parties)
+		f.eddsaKeygenData = models.EDDSAKeygenData{
+			TssConfig: tssConfig, PartyID: sortedPIDs[0],
+		}
+		return f.eddsaKeygenData, nil
+	}
 }
 
 //	Loads the ECDSA keygen data from the file
-func (f *storage) LoadECDSAKeygen(peerHome string, p2pId string) (models.TssConfigECDSA, *tss.PartyID, error) {
-	// locating file
-	var keygenFile string
+func (f *storage) LoadECDSAKeygen(peerHome string, p2pId string) (models.ECDSAKeygenData, error) {
 
-	filePath := f.makefilePath(peerHome, models.ECDSA)
-	files, err := ioutil.ReadDir(filePath)
-	if err != nil || len(files) == 0 {
-		logging.Warnf("couldn't find ecdsa keygen %v", err)
-		return models.TssConfigECDSA{}, nil, errors.New(models.ECDSANoKeygenDataFoundError)
-	}
+	if !f.ecdsaKeygenData.IsEmpty() {
+		return f.ecdsaKeygenData, nil
+	} else {
+		// locating file
+		var keygenFile string
 
-	for _, File := range files {
-		if strings.Contains(File.Name(), "keygen") {
-			keygenFile = File.Name()
+		filePath := f.makefilePath(peerHome, models.ECDSA)
+		files, err := ioutil.ReadDir(filePath)
+		if err != nil || len(files) == 0 {
+			logging.Warnf("couldn't find ecdsa keygen %v", err)
+			return models.ECDSAKeygenData{}, errors.New(models.ECDSANoKeygenDataFoundError)
 		}
-	}
-	keyFilePath := filepath.Join(filePath, keygenFile)
-	logging.Infof("key file path: %v", keyFilePath)
 
-	// reading file
-	bz, err := ioutil.ReadFile(keyFilePath)
-	if err != nil {
-		return models.TssConfigECDSA{}, nil, errors.Wrapf(
-			err,
-			"could not open the file for party in the expected location: %s. run keygen first.", keyFilePath,
-		)
-	}
-	var tssConfig models.TssConfigECDSA
-	if err = json.Unmarshal(bz, &tssConfig); err != nil {
-		return models.TssConfigECDSA{}, nil, errors.Wrapf(
-			err,
-			"could not unmarshal data for party located at: %s", keyFilePath,
-		)
-	}
+		for _, File := range files {
+			if strings.Contains(File.Name(), "keygen") {
+				keygenFile = File.Name()
+			}
+		}
+		keyFilePath := filepath.Join(filePath, keygenFile)
+		logging.Debugf("key file path: %v", keyFilePath)
 
-	//creating data from file
-	for _, kbxj := range tssConfig.KeygenData.BigXj {
-		kbxj.SetCurve(tss.S256())
-	}
-	tssConfig.KeygenData.ECDSAPub.SetCurve(tss.S256())
-	id := p2pId
-	pMoniker := fmt.Sprintf("tssPeer/%s", p2pId)
-	partyID := tss.NewPartyID(id, pMoniker, tssConfig.KeygenData.ShareID)
+		// reading file
+		bz, err := ioutil.ReadFile(keyFilePath)
+		if err != nil {
+			return models.ECDSAKeygenData{}, errors.Wrapf(
+				err,
+				"could not open the file for party in the expected location: %s. run keygen first.", keyFilePath,
+			)
+		}
+		var tssConfig models.TssConfigECDSA
+		if err = json.Unmarshal(bz, &tssConfig); err != nil {
+			return models.ECDSAKeygenData{}, errors.Wrapf(
+				err,
+				"could not unmarshal data for party located at: %s", keyFilePath,
+			)
+		}
 
-	var parties tss.UnSortedPartyIDs
-	parties = append(parties, partyID)
-	sortedPIDs := tss.SortPartyIDs(parties)
-	return tssConfig, sortedPIDs[0], nil
+		//creating data from file
+		for _, kbxj := range tssConfig.KeygenData.BigXj {
+			kbxj.SetCurve(tss.S256())
+		}
+		tssConfig.KeygenData.ECDSAPub.SetCurve(tss.S256())
+		id := p2pId
+		pMoniker := fmt.Sprintf("tssPeer/%s", p2pId)
+		partyID := tss.NewPartyID(id, pMoniker, tssConfig.KeygenData.ShareID)
+
+		var parties tss.UnSortedPartyIDs
+		parties = append(parties, partyID)
+		sortedPIDs := tss.SortPartyIDs(parties)
+		f.ecdsaKeygenData = models.ECDSAKeygenData{
+			TssConfig: tssConfig, PartyID: sortedPIDs[0],
+		}
+		return f.ecdsaKeygenData, nil
+	}
 }
