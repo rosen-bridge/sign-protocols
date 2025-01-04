@@ -215,18 +215,18 @@ func (h *handler) StartParty(
 func (h *handler) LoadData(rosenTss _interface.RosenTss) (*tss.PartyID, error) {
 	_, err1 := rosenTss.GetMetaData(models.EDDSA)
 	if h.savedData.ShareID == nil || (err1 != nil && err1.Error() == models.EDDSANoMetaDataFoundError) {
-		data, pID, err := rosenTss.GetStorage().LoadEDDSAKeygen(rosenTss.GetPeerHome(), rosenTss.GetP2pId())
+		data, err := rosenTss.GetStorage().LoadEDDSAKeygen(rosenTss.GetPeerHome(), rosenTss.GetP2pId())
 		if err != nil {
 			logging.Error(err)
 			return nil, err
 		}
-		if pID == nil {
+		if data.PartyID == nil {
 			logging.Error("pID is nil")
 			return nil, fmt.Errorf("pID is nil")
 		}
-		h.savedData = data.KeygenData
-		h.pID = pID
-		err = rosenTss.SetMetaData(data.MetaData, models.EDDSA)
+		h.savedData = data.TssConfig.KeygenData
+		h.pID = data.PartyID
+		err = rosenTss.SetMetaData(data.TssConfig.MetaData, models.EDDSA)
 		if err != nil {
 			return nil, err
 		}

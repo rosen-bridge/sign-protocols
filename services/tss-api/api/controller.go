@@ -17,6 +17,7 @@ type TssController interface {
 	Sign() echo.HandlerFunc
 	Keygen() echo.HandlerFunc
 	Message() echo.HandlerFunc
+	GetPublicKey() echo.HandlerFunc
 	Validate(interface{}) error
 }
 
@@ -195,6 +196,24 @@ func (tssController *tssController) Threshold() echo.HandlerFunc {
 			return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 		}
 		res := map[string]int{"threshold": meta.Threshold}
+		return c.JSON(http.StatusOK, res)
+	}
+}
+
+//	returns echo handler, get public key of crypto
+func (tssController *tssController) GetPublicKey() echo.HandlerFunc {
+	return func(c echo.Context) (err error) {
+		data := models.GetPublicKey{}
+
+		if err = c.Bind(&data); err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+		}
+
+		pk, err := tssController.rosenTss.GetPublicKey(data)
+		if err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+		}
+		res := map[string]string{"publicKey": pk}
 		return c.JSON(http.StatusOK, res)
 	}
 }

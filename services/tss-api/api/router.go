@@ -17,6 +17,7 @@ func InitRouting(e *echo.Echo, tssController TssController) {
 	e.Use(middleware.Recover())
 
 	e.GET("/threshold", tssController.Threshold())
+	e.POST("/getPK", tssController.GetPublicKey())
 	e.POST("/sign", tssController.Sign())
 	e.POST("/keygen", tssController.Keygen())
 	e.POST("/message", tssController.Message())
