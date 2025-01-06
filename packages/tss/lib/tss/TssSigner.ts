@@ -1,5 +1,7 @@
 import { Communicator } from '@rosen-bridge/communication';
 import {
+  PublicKeyID,
+  GetPublicKeyResponse,
   PendingSign,
   Sign,
   SignApprovePayload,
@@ -22,6 +24,7 @@ import {
 import {
   approveMessage,
   cachedMessage,
+  getPkUrl,
   requestMessage,
   signUrl,
   startMessage,
@@ -29,7 +32,7 @@ import {
 } from '../const/signer';
 import { DummyLogger } from '@rosen-bridge/abstract-logger';
 import { Mutex } from 'await-semaphore';
-import axios, { AxiosInstance } from 'axios';
+import axios, { AxiosInstance, AxiosResponse } from 'axios';
 
 export abstract class TssSigner extends Communicator {
   protected readonly axios: AxiosInstance;
@@ -44,6 +47,7 @@ export abstract class TssSigner extends Communicator {
   protected lastUpdateRound: number;
   protected signs: Array<Sign>;
   protected signCache: Record<string, SignResult>;
+  protected publicKeys: Record<string, string>;
   protected pendingSigns: Array<PendingSign>;
   protected readonly detection: GuardDetection;
   protected readonly getPeerId: () => Promise<string>;
@@ -115,6 +119,7 @@ export abstract class TssSigner extends Communicator {
     this.shares = config.shares;
     this.signs = [];
     this.signCache = {};
+    this.publicKeys = {};
     this.pendingSigns = [];
     this.pendingAccessMutex = new Mutex();
     this.signAccessMutex = new Mutex();
@@ -256,6 +261,9 @@ export abstract class TssSigner extends Communicator {
     }
 
     if (msg in this.signCache) {
+      this.logger.info(
+        `sign called with a message that its signature is cached, calling callback`,
+      );
       callback(true, undefined, this.signCache[msg].signature);
       return;
     }
@@ -617,36 +625,81 @@ export abstract class TssSigner extends Communicator {
     const sign = this.getSign(payload.msg);
     if (!sign) {
       this.logger.warn(
-        `sign cached message arrived but signing message not found [${payload.msg}]`,
+        `handleSignCachedMessage: signing message not found [${payload.msg}]`,
       );
       return;
     }
 
-    if (sign.request && !this.isNoWorkTime()) {
-      return this.signAccessMutex.acquire().then(async (release) => {
-        if (this.getSign(payload.msg)) {
-          // TODO: verify signature
-
-          this.addSignToCache(payload.msg, {
-            signature: payload.signature!,
-            signatureRecovery: payload.signatureRecovery,
-          });
-
-          await this.handleSuccessfulSign(
-            sign,
-            payload.signature!,
-            payload.signatureRecovery,
-          );
-
-          this.signs = this.signs.filter((item) => item.msg !== payload.msg);
-        }
-        release();
-      });
-    } else {
+    if (!sign.request || this.isNoWorkTime()) {
       this.logger.debug(
-        'new message arrived but current guard is in no-work-period',
+        'handleSignCachedMessage: current guard is in no-work-period',
       );
+      return;
     }
+
+    return this.signAccessMutex.acquire().then(async (release) => {
+      const sign = this.getSign(payload.msg);
+      if (sign === undefined) {
+        release();
+        return;
+      }
+
+      const pkId: PublicKeyID = {
+        crypto: this.signingCrypto,
+        chainCode: sign.chainCode,
+        derivationPath: sign.derivationPath ?? [],
+      };
+
+      const publicKey = await this.getPk(pkId);
+
+      if (publicKey === undefined) {
+        this.logger.debug('handleSignCachedMessage: get public key failed');
+        release();
+        return;
+      }
+
+      // TODO: impl verify signature
+      // const verifiedSign = await ed.verifyAsync(payload.signature, sign.msg, publicKey);
+
+      // const verifiedSign = await this.messageEnc.verify(
+      //   msg,
+      //   payload.signature,
+      //   publicKey,
+      // );
+
+      // if (verifiedSign === false) {
+      //   this.logger.warn(
+      //     'handleSignCachedMessage: verification failed',
+      //   );
+      //   release();
+      //   return;
+      // }
+
+      this.logger.info(
+        'handleSignCachedMessage: verified, calling handleSuccessfulSign',
+      );
+
+      this.addSignToCache(payload.msg, {
+        signature: payload.signature,
+        signatureRecovery: payload.signatureRecovery,
+      });
+
+      try {
+        await this.handleSuccessfulSign(
+          sign,
+          payload.signature,
+          payload.signatureRecovery,
+        );
+
+        this.signs = this.signs.filter((item) => item.msg !== payload.msg);
+      } catch (error) {
+        this.logger.error(
+          `handleSignCachedMessage: handleSuccessfulSign failed with error: ${JSON.stringify(error)}`,
+        );
+      }
+
+      release();
+    });
   };
 
   /**
@@ -772,6 +825,37 @@ export abstract class TssSigner extends Communicator {
         }
       });
     }
+  };
+
+  /**
+   * request tss-api for a public-key using an identifier
+   * @param id
+   * @returns publicKey | undefined
+   */
+  getPk = async (id: PublicKeyID): Promise<string | undefined> => {
+    this.logger.debug(
+      `getPk requesting tss-api to get public key. crypto: ${id.crypto}`,
+    );
+    // check public keys cache
+    const idString = JSON.stringify(id);
+    if (idString in this.publicKeys) {
+      this.logger.debug(`getPk loaded from cache`);
+      return this.publicKeys[idString];
+    }
+    try {
+      // tss-api responds with http error if requested public key be unavailable
+      const result: AxiosResponse<GetPublicKeyResponse> = await this.axios.post(
+        getPkUrl,
+        id,
+      );
+      // cache public key
+      this.publicKeys[idString] = result.data.publicKey;
+      this.logger.debug(`getPk done, ${JSON.stringify(result.data)}`);
+      return result.data.publicKey;
+    } catch (error) {
+      this.logger.error(`getPk error from tss-api, ${JSON.stringify(error)}`);
+    }
+    return undefined;
   };
 
   /**

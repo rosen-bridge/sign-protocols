@@ -5,6 +5,7 @@ const requestMessage: SignMessageType = 'request';
 const cachedMessage: SignMessageType = 'cached';
 const startMessage: SignMessageType = 'start';
 const signUrl = 'sign';
+const getPkUrl = 'getPK';
 const thresholdUrl = 'threshold';
 
 export {
@@ -13,5 +14,6 @@ export {
   cachedMessage,
   startMessage,
   signUrl,
+  getPkUrl,
   thresholdUrl,
 };

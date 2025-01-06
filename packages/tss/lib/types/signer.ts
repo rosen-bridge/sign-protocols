@@ -75,6 +75,16 @@ export interface SignStartPayload {
   signs: Array<string>;
 }
 
+export interface PublicKeyID {
+  crypto: string;
+  chainCode: string;
+  derivationPath: Array<number>;
+}
+
+export interface GetPublicKeyResponse {
+  publicKey: string;
+}
+
 export type SignMessageType = 'request' | 'approve' | 'cached' | 'start';
 
 export enum StatusEnum {

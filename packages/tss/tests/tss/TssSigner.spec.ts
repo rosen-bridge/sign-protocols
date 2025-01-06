@@ -1284,6 +1284,8 @@ describe('TssSigner', () => {
      * @dependencies
      * @scenario
      * - mock sign
+     * - mock getPk
+     * - mock verifySignature
      * - call handleSignCachedMessage with cached message
      * @expected
      * - must verify signature
@@ -1293,6 +1295,8 @@ describe('TssSigner', () => {
      */
     it('should call handleSuccessfulSign even when approving guards are less than threshold', async () => {
       expect(signer.mockedGetSign('test message')).toBeDefined();
+      vi.spyOn(signer, 'getPk').mockResolvedValue('');
+      vi.spyOn(guardMessageEncs[0], 'verify').mockResolvedValue(true);
 
       await signer.mockedHandleSignCachedMessage(
         {
@@ -1347,11 +1351,36 @@ describe('TssSigner', () => {
     });
 
     /**
-     * @target TssSigner.handleSuccessfulSign should return when guard is in no-work time
+     * @target GuardDetection.handleSignCachedMessage should return if signature is not valid
+     * @dependencies
+     * @scenario
+     * - call handleSignCachedMessage
+     * @expected
+     * - must check if signature is valid
+     * - must return if its not
+     */
+    it('should return if signature is not valid', async () => {
+      await signer.mockedHandleSignCachedMessage(
+        {
+          msg: 'test message2',
+          signature: 'signature',
+          signatureRecovery: undefined,
+        },
+        'peerId-2',
+        2,
+        'random signature',
+      );
+
+      expect(signer.getSignCached()).not.toHaveProperty('test message2');
+      expect(callback).toHaveBeenCalledTimes(0);
+    });
+
+    /**
+     * @target TssSigner.handleSignCachedMessage should return when guard is in no-work time
      * @dependencies
      * @scenario
      * - mock system time
-     * - call handleSuccessfulSign
+     * - call handleSignCachedMessage
      * @expected
      * - must return
      */
