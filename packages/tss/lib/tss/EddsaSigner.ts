@@ -1,3 +1,4 @@
+import * as ed from '@noble/ed25519';
 import { Sign, SignerConfig, SignResult } from '../types/signer';
 import { TssSigner } from './TssSigner';
 
@@ -71,5 +72,19 @@ export class EddsaSigner extends TssSigner {
     } else {
       throw Error('signature is required when EdDSA sign is successful');
     }
+  };
+
+  /**
+   * verify message signature
+   * @param message
+   * @param signature
+   * @param signerPublicKey
+   */
+  verify = async (
+    message: string,
+    signature: string,
+    signerPublicKey: string,
+  ): Promise<boolean> => {
+    return ed.verifyAsync(signature, message, signerPublicKey);
   };
 }

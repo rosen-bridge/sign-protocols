@@ -308,6 +308,18 @@ export abstract class TssSigner extends Communicator {
   ) => Promise<SignResult>;
 
   /**
+   * verify message signature
+   * @param message
+   * @param signature
+   * @param signerPublicKey
+   */
+  abstract verify: (
+    message: string,
+    signature: string,
+    signerPublicKey: string,
+  ) => Promise<boolean>;
+
+  /**
    * process new message
    * @param messageType
    * @param payload
@@ -658,22 +670,17 @@ export abstract class TssSigner extends Communicator {
         return;
       }
 
-      // TODO: impl verify signature
-      // const verifiedSign = await ed.verifyAsync(payload.signature, sign.msg, publicKey);
+      const verifiedSign = await this.verify(
+        sign.msg,
+        payload.signature,
+        publicKey,
+      );
 
-      // const verifiedSign = await this.messageEnc.verify(
-      //   msg,
-      //   payload.signature,
-      //   publicKey,
-      // );
-
-      // if (verifiedSign === false) {
-      //   this.logger.warn(
-      //     'handleSignCachedMessage: verification failed',
-      //   );
-      //   release();
-      //   return;
-      // }
+      if (verifiedSign === false) {
+        this.logger.warn('handleSignCachedMessage: verification failed');
+        release();
+        return;
+      }
 
       this.logger.info(
         'handleSignCachedMessage: verified, calling handleSuccessfulSign',
