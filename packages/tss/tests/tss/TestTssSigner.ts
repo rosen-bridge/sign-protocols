@@ -166,6 +166,20 @@ export class TestTssSigner extends TssSigner {
   ) => this.sign(msg, callback, chainCode, derivationPath);
 
   /**
+   * calls verify
+   * @param message
+   * @param callback
+   * @param chainCode
+   * @param derivationPath
+   * @returns
+   */
+  verify = async (
+    message: string,
+    signature: string,
+    signerPublicKey: string,
+  ) => true;
+
+  /**
    * handles signing data callback in case of successful sign
    * @param sign
    * @param signature

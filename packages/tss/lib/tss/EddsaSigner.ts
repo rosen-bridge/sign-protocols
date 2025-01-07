@@ -76,9 +76,9 @@ export class EddsaSigner extends TssSigner {
 
   /**
    * verify message signature
-   * @param message
-   * @param signature
-   * @param signerPublicKey
+   * @param message hex string
+   * @param signature hex string
+   * @param signerPublicKey hex string
    */
   verify = async (
     message: string,
