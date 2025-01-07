@@ -120,16 +120,9 @@ export class TestTssSigner extends TssSigner {
   /**
    * calling protected function handleSignCachedMessage
    * @param payload
-   * @param sender
-   * @param guardIndex
-   * @param signature
    */
-  mockedHandleSignCachedMessage = (
-    payload: SignCachedPayload,
-    sender: string,
-    guardIndex: number,
-    signature: string,
-  ) => this.handleSignCachedMessage(payload, sender, guardIndex, signature);
+  mockedHandleSignCachedMessage = (payload: SignCachedPayload) =>
+    this.handleSignCachedMessage(payload);
 
   /**
    * calling protected function handleStartMessage
@@ -191,6 +184,10 @@ export class TestTssSigner extends TssSigner {
     signatureRecovery?: string,
   ): Promise<void> => {
     if (signature) {
+      this.addSignToCache(sign.msg, {
+        signature: signature!,
+        signatureRecovery: undefined,
+      });
       sign.callback(true, undefined, signature, signatureRecovery);
     } else {
       throw Error('signature is required when sign is successful');

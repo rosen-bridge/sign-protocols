@@ -68,6 +68,10 @@ export class EddsaSigner extends TssSigner {
     signature?: string,
   ): Promise<void> => {
     if (signature) {
+      this.addSignToCache(sign.msg, {
+        signature: signature!,
+        signatureRecovery: undefined,
+      });
       sign.callback(true, undefined, signature);
     } else {
       throw Error('signature is required when EdDSA sign is successful');

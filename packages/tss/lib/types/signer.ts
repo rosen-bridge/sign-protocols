@@ -76,7 +76,6 @@ export interface SignStartPayload {
 }
 
 export interface PublicKeyID {
-  crypto: string;
   chainCode: string;
   derivationPath: Array<number>;
 }

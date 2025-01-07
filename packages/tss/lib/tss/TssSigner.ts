@@ -352,12 +352,7 @@ export abstract class TssSigner extends Communicator {
           sign,
         );
       case cachedMessage:
-        return this.handleSignCachedMessage(
-          payload as SignCachedPayload,
-          peerId,
-          senderIndex,
-          sign,
-        );
+        return this.handleSignCachedMessage(payload as SignCachedPayload);
       case startMessage:
         return this.handleStartMessage(
           payload as SignStartPayload,
@@ -535,6 +530,17 @@ export abstract class TssSigner extends Communicator {
   };
 
   /**
+   * remove a signing message in sign queue.
+   * @param msg
+   */
+  protected removeSign = (msg: string) => {
+    return this.signAccessMutex.acquire().then((release) => {
+      this.signs = this.signs.filter((item) => item.msg !== msg);
+      release();
+    });
+  };
+
+  /**
    * get a message in list of pending signature.
    * @param msg
    */
@@ -624,16 +630,8 @@ export abstract class TssSigner extends Communicator {
    * store the signature in local cache
    * and call the callback
    * @param payload
-   * @param sender
-   * @param guardIndex
-   * @param signature
    */
-  protected handleSignCachedMessage = async (
-    payload: SignCachedPayload,
-    sender: string,
-    guardIndex: number,
-    signature: string,
-  ) => {
+  protected handleSignCachedMessage = async (payload: SignCachedPayload) => {
     const sign = this.getSign(payload.msg);
     if (!sign) {
       this.logger.warn(
@@ -642,71 +640,40 @@ export abstract class TssSigner extends Communicator {
       return;
     }
 
-    if (!sign.request || this.isNoWorkTime()) {
-      this.logger.debug(
-        'handleSignCachedMessage: current guard is in no-work-period',
-      );
+    if (!sign.request) {
       return;
     }
 
-    return this.signAccessMutex.acquire().then(async (release) => {
-      const sign = this.getSign(payload.msg);
-      if (sign === undefined) {
-        release();
-        return;
-      }
+    const pkId: PublicKeyID = {
+      chainCode: sign.chainCode,
+      derivationPath: sign.derivationPath ?? [],
+    };
 
-      const pkId: PublicKeyID = {
-        crypto: this.signingCrypto,
-        chainCode: sign.chainCode,
-        derivationPath: sign.derivationPath ?? [],
-      };
+    const publicKey = await this.getPk(pkId);
 
-      const publicKey = await this.getPk(pkId);
+    if (publicKey === undefined) {
+      this.logger.debug('handleSignCachedMessage: get public key failed');
+      return;
+    }
 
-      if (publicKey === undefined) {
-        this.logger.debug('handleSignCachedMessage: get public key failed');
-        release();
-        return;
-      }
+    const verifiedSign = await this.verify(
+      sign.msg,
+      payload.signature,
+      publicKey,
+    );
 
-      const verifiedSign = await this.verify(
-        sign.msg,
-        payload.signature,
-        publicKey,
-      );
+    if (verifiedSign === false) {
+      this.logger.warn('handleSignCachedMessage: verification failed');
+      return;
+    }
 
-      if (verifiedSign === false) {
-        this.logger.warn('handleSignCachedMessage: verification failed');
-        release();
-        return;
-      }
+    await this.handleSuccessfulSign(
+      sign,
+      payload.signature,
+      payload.signatureRecovery,
+    );
 
-      this.logger.info(
-        'handleSignCachedMessage: verified, calling handleSuccessfulSign',
-      );
-
-      this.addSignToCache(payload.msg, {
-        signature: payload.signature,
-        signatureRecovery: payload.signatureRecovery,
-      });
-
-      try {
-        await this.handleSuccessfulSign(
-          sign,
-          payload.signature,
-          payload.signatureRecovery,
-        );
-
-        this.signs = this.signs.filter((item) => item.msg !== payload.msg);
-      } catch (error) {
-        this.logger.error(
-          `handleSignCachedMessage: handleSuccessfulSign failed with error: ${JSON.stringify(error)}`,
-        );
-      }
-
-      release();
-    });
+    return this.removeSign(payload.msg);
   };
 
   /**
@@ -841,7 +808,7 @@ export abstract class TssSigner extends Communicator {
    */
   getPk = async (id: PublicKeyID): Promise<string | undefined> => {
     this.logger.debug(
-      `getPk requesting tss-api to get public key. crypto: ${id.crypto}`,
+      `getPk requesting tss-api to get public key. crypto: ${this.signingCrypto}`,
     );
     // check public keys cache
     const idString = JSON.stringify(id);
@@ -853,7 +820,7 @@ export abstract class TssSigner extends Communicator {
       // tss-api responds with http error if requested public key be unavailable
       const result: AxiosResponse<GetPublicKeyResponse> = await this.axios.post(
         getPkUrl,
-        id,
+        { ...id, crypto: this.signingCrypto },
       );
       // cache public key
       this.publicKeys[idString] = result.data.publicKey;
@@ -885,18 +852,11 @@ export abstract class TssSigner extends Communicator {
       throw Error('Invalid message');
     }
     if (status === StatusEnum.Success) {
-      this.addSignToCache(message, {
-        signature: signature!,
-        signatureRecovery,
-      });
       await this.handleSuccessfulSign(sign, signature, signatureRecovery);
     } else {
       sign.callback(false, error);
     }
-    return this.signAccessMutex.acquire().then((release) => {
-      this.signs = this.signs.filter((item) => item.msg !== message);
-      release();
-    });
+    return this.removeSign(message);
   };
 
   /**

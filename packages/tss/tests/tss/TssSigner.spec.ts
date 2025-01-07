@@ -533,7 +533,7 @@ describe('TssSigner', () => {
       const mockedFn = ((signer as any).handleSignCachedMessage = vi.fn());
       await signer.processMessage(cachedMessage, {}, 'sign', 1, 'peerId', 1234);
       expect(mockedFn).toHaveBeenCalledTimes(1);
-      expect(mockedFn).toHaveBeenCalledWith({}, 'peerId', 1, 'sign');
+      expect(mockedFn).toHaveBeenCalledWith({});
     });
 
     /**
@@ -1298,16 +1298,11 @@ describe('TssSigner', () => {
       vi.spyOn(signer, 'getPk').mockResolvedValue('');
       vi.spyOn(guardMessageEncs[0], 'verify').mockResolvedValue(true);
 
-      await signer.mockedHandleSignCachedMessage(
-        {
-          msg: 'test message',
-          signature: 'signature',
-          signatureRecovery: undefined,
-        },
-        'peerId-2',
-        2,
-        'random signature',
-      );
+      await signer.mockedHandleSignCachedMessage({
+        msg: 'test message',
+        signature: 'signature',
+        signatureRecovery: undefined,
+      });
 
       expect(signer.getSignCached()).toHaveProperty('test message');
       expect(signer.getSignCached()['test message'].signature).toEqual(
@@ -1335,16 +1330,11 @@ describe('TssSigner', () => {
      * - must return if it doesn't exist
      */
     it("should return if sign record doesn't exist", async () => {
-      await signer.mockedHandleSignCachedMessage(
-        {
-          msg: 'test message2',
-          signature: 'signature',
-          signatureRecovery: undefined,
-        },
-        'peerId-2',
-        2,
-        'random signature',
-      );
+      await signer.mockedHandleSignCachedMessage({
+        msg: 'test message2',
+        signature: 'signature',
+        signatureRecovery: undefined,
+      });
 
       expect(signer.getSignCached()).not.toHaveProperty('test message2');
       expect(callback).toHaveBeenCalledTimes(0);
@@ -1360,16 +1350,11 @@ describe('TssSigner', () => {
      * - must return if its not
      */
     it('should return if signature is not valid', async () => {
-      await signer.mockedHandleSignCachedMessage(
-        {
-          msg: 'test message2',
-          signature: 'signature',
-          signatureRecovery: undefined,
-        },
-        'peerId-2',
-        2,
-        'random signature',
-      );
+      await signer.mockedHandleSignCachedMessage({
+        msg: 'test message2',
+        signature: 'signature',
+        signatureRecovery: undefined,
+      });
 
       expect(signer.getSignCached()).not.toHaveProperty('test message2');
       expect(callback).toHaveBeenCalledTimes(0);
@@ -1391,16 +1376,11 @@ describe('TssSigner', () => {
 
       expect(signer.mockedGetSign('test message')).toBeDefined();
 
-      await signer.mockedHandleSignCachedMessage(
-        {
-          msg: 'test message',
-          signature: 'signature',
-          signatureRecovery: undefined,
-        },
-        'peerId-2',
-        2,
-        'random signature',
-      );
+      await signer.mockedHandleSignCachedMessage({
+        msg: 'test message',
+        signature: 'signature',
+        signatureRecovery: undefined,
+      });
 
       expect(signer.mockedGetSign('test message')).toBeDefined();
       expect(callback).toHaveBeenCalledTimes(0);

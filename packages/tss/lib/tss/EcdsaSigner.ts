@@ -75,6 +75,10 @@ export class EcdsaSigner extends TssSigner {
     signatureRecovery?: string,
   ): Promise<void> => {
     if (signature && signatureRecovery) {
+      this.addSignToCache(sign.msg, {
+        signature: signature!,
+        signatureRecovery,
+      });
       sign.callback(true, undefined, signature, signatureRecovery);
     } else {
       throw Error(
