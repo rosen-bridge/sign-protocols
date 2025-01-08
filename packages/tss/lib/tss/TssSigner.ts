@@ -667,6 +667,10 @@ export abstract class TssSigner extends Communicator {
       return;
     }
 
+    this.logger.debug(
+      'handleSignCachedMessage: signature is valid, calling handleSuccessfulSign',
+    );
+
     await this.handleSuccessfulSign(
       sign,
       payload.signature,
