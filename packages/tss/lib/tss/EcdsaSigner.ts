@@ -98,7 +98,7 @@ export class EcdsaSigner extends TssSigner {
     signature: string,
     signerPublicKey: string,
   ): Promise<boolean> => {
-    const msg = blake2b(message, undefined, 32);
+    const msg = Buffer.from(message, 'hex');
     const sign = Buffer.from(signature, 'hex');
     const publicKey = Buffer.from(signerPublicKey, 'hex');
     return pkg.ecdsaVerify(sign, msg, publicKey);

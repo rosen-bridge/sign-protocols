@@ -31,11 +31,8 @@ export class TestTssSigner extends TssSigner {
    * @param message
    * @param signResult
    */
-  mockedAddSignToCache = (
-    message: string,
-    signResult: SignResult,
-    ttl?: number,
-  ) => this.addSignToCache(message, signResult, ttl);
+  callAddSignToCache = (message: string, signResult: SignResult) =>
+    this.addSignToCache(message, signResult);
 
   /**
    * calling protected function getUnknownGuards
@@ -121,8 +118,8 @@ export class TestTssSigner extends TssSigner {
    * calling protected function handleSignCachedMessage
    * @param payload
    */
-  mockedHandleSignCachedMessage = (payload: SignCachedPayload) =>
-    this.handleSignCachedMessage(payload);
+  callHandleSignCachedMessage = (payload: SignCachedPayload, sender: string) =>
+    this.handleSignCachedMessage(payload, sender);
 
   /**
    * calling protected function handleStartMessage
