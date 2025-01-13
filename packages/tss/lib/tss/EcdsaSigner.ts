@@ -1,4 +1,3 @@
-import { blake2b } from 'blakejs';
 import pkg from 'secp256k1';
 import { Sign, SignerConfig, SignResult } from '../types/signer';
 import { TssSigner } from './TssSigner';
