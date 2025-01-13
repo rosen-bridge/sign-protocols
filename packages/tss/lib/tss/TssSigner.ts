@@ -658,10 +658,6 @@ export abstract class TssSigner extends Communicator {
       return;
     }
 
-    if (!sign.request) {
-      return;
-    }
-
     const verifiedSign = await this.getPkAndVerifySignature(
       sign.msg,
       payload.signature,
