@@ -57,8 +57,6 @@ describe('EcdsaSigner', () => {
     it('should return true when signature is valid', async () => {
       const sk = await ECDSA.randomKey();
       const ecdsaMessageEnc = new ECDSA(sk);
-      vi.restoreAllMocks();
-      vi.setSystemTime(new Date(currentTime));
       const detection = new GuardDetection({
         messageEnc: ecdsaMessageEnc,
         guardsPublicKey: [],

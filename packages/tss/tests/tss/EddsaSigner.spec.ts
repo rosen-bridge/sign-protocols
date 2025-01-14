@@ -57,8 +57,6 @@ describe('EddsaSigner', () => {
     it('should return true when signature is valid', async () => {
       const sk = await EdDSA.randomKey();
       const eddsaMessageEnc = new EdDSA(sk);
-      vi.restoreAllMocks();
-      vi.setSystemTime(new Date(currentTime));
       const detection = new GuardDetection({
         messageEnc: eddsaMessageEnc,
         guardsPublicKey: [],

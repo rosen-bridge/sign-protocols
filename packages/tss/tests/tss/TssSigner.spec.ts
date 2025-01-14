@@ -430,7 +430,7 @@ describe('TssSigner', () => {
      * - mock signCache
      * - call sign
      * @expected
-     * - callback should have been called with execpted arugments
+     * - callback should have been called with expected arguments
      */
     it('should call back with cached signature if cache record is available', async () => {
       expect(signer.getSigns().length).toEqual(0);
@@ -438,13 +438,18 @@ describe('TssSigner', () => {
       vi.spyOn(guardMessageEncs[0], 'verify').mockResolvedValue(true);
       const cacheRecord = {
         signature: 'signature',
-        signatureRecovery: undefined,
+        signatureRecovery: 'signatureRecovery',
       };
       signer.getSignCached()['msg'] = cacheRecord;
       const cb = vi.fn();
       await signer.callSign('msg', cb, 'chainCode');
       expect(cb).toHaveBeenCalledTimes(1);
-      expect(cb).toHaveBeenCalledWith(true, undefined, 'signature', undefined);
+      expect(cb).toHaveBeenCalledWith(
+        true,
+        undefined,
+        'signature',
+        'signatureRecovery',
+      );
       expect(signer.getSigns().length).toEqual(0);
     });
 
@@ -1334,7 +1339,7 @@ describe('TssSigner', () => {
      * @scenario
      * - call handleSignCachedMessage
      * @expected
-     * - sign existance should have been checked
+     * - sign existence should have been checked
      * - if it doesn't exist function is expected to return
      */
     it("should return if sign record doesn't exist", async () => {
