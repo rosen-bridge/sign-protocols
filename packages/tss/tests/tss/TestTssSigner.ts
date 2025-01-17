@@ -19,7 +19,7 @@ export class TestTssSigner extends TssSigner {
   /**
    * get list of signatures in current object's cache
    */
-  getSignCached = () => this.signCache as Record<string, SignResult>;
+  getSignCache = () => this.signCache as Record<string, SignResult>;
 
   /**
    * get list of pending signs in current object
@@ -53,6 +53,12 @@ export class TestTssSigner extends TssSigner {
    * @param msg
    */
   mockedGetSign = (msg: string) => this.getSign(msg);
+
+  /**
+   * calls protected function removeSign
+   * @param msg
+   */
+  callRemoveSign = (msg: string) => this.removeSign(msg);
 
   /**
    * calling protected function isNoWorkTime
@@ -117,6 +123,7 @@ export class TestTssSigner extends TssSigner {
   /**
    * calling protected function handleSignCachedMessage
    * @param payload
+   * @param sender
    */
   callHandleSignCachedMessage = (payload: SignCachedPayload, sender: string) =>
     this.handleSignCachedMessage(payload, sender);
@@ -158,9 +165,8 @@ export class TestTssSigner extends TssSigner {
   /**
    * calls verify
    * @param message
-   * @param callback
-   * @param chainCode
-   * @param derivationPath
+   * @param signature
+   * @param signerPublicKey
    * @returns
    */
   verify = async (
@@ -168,6 +174,22 @@ export class TestTssSigner extends TssSigner {
     signature: string,
     signerPublicKey: string,
   ) => true;
+
+  /**
+   * calls protected function getPkAndVerifySignature
+   * @param message
+   * @param signature
+   * @param chainCode
+   * @param derivationPath
+   * @returns
+   */
+  callGetPkAndVerifySignature = async (
+    message: string,
+    signature: string,
+    chainCode: string,
+    derivationPath?: number[],
+  ) =>
+    this.getPkAndVerifySignature(message, signature, chainCode, derivationPath);
 
   /**
    * handles signing data callback in case of successful sign
@@ -183,7 +205,7 @@ export class TestTssSigner extends TssSigner {
     if (signature) {
       this.addSignToCache(sign.msg, {
         signature: signature!,
-        signatureRecovery: undefined,
+        signatureRecovery: signatureRecovery,
       });
       sign.callback(true, undefined, signature, signatureRecovery);
     } else {

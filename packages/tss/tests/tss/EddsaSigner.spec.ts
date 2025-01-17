@@ -82,5 +82,43 @@ describe('EddsaSigner', () => {
 
       expect(result).toBe(true);
     });
+
+    /**
+     * @target TssSigner.verify should return false when signature is invalid
+     * @dependencies
+     * @scenario
+     * - generate EddsaSigner object using mocked data
+     * - call verify with invalid args
+     * @expected
+     * - it should return false
+     */
+    it('should return false when signature is invalid', async () => {
+      const sk = await EdDSA.randomKey();
+      const eddsaMessageEnc = new EdDSA(sk);
+      const detection = new GuardDetection({
+        messageEnc: eddsaMessageEnc,
+        guardsPublicKey: [],
+        submit: vi.fn(),
+        getPeerId: () => Promise.resolve('myPeerId'),
+      });
+      const eddsaSigner = new EddsaSigner({
+        submitMsg: vi.fn(),
+        callbackUrl: '',
+        messageEnc: eddsaMessageEnc,
+        detection: detection,
+        guardsPk: [],
+        tssApiUrl: '',
+        getPeerId: () => Promise.resolve('myPeerId'),
+        shares: [],
+      });
+
+      const result = await eddsaSigner.verify(
+        '00f163ee51bcaeff9cdff5e0e3c1a646abd19885fffbab0b3b4236e0cf95c9f5',
+        '35b27be04dcd6d745c59f5e79f5466b5549e6158f65ba0e2884691163a7acf936e709f6d19cf666151e4a7e3eb59ebaf58e72dfacac517cb0b32ea0dac118800',
+        '8d325970f72f8416ac9d0e5633e8a611c95ff482288615cd35f82bac443bdd9f',
+      );
+
+      expect(result).toBe(false);
+    });
   });
 });

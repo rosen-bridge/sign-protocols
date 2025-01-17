@@ -147,11 +147,13 @@ export abstract class TssSigner extends Communicator {
 
   /**
    * cache a signature
+   * @param message
+   * @param signResult
    */
   protected addSignToCache = (message: string, signResult: SignResult) => {
     if (Object.hasOwn(this.signCache, message)) {
       this.logger.debug(
-        `Got signature [${signResult.signature}.${signResult.signatureRecovery}] to cache but message [${message}] has already a signature: ${this.signCache[message]}`,
+        `Got signature [${signResult.signature}.${signResult.signatureRecovery}] to cache but message [${message}] has already a signature: ${this.signCache[message].signature}.${this.signCache[message].signatureRecovery}`,
       );
       return;
     }
@@ -275,6 +277,7 @@ export abstract class TssSigner extends Communicator {
       );
 
       if (verifiedSign === false) {
+        delete this.signCache[msg];
         this.logger.warn(
           `sign: failed to verify signature [${signResult.signature}] with msg [${msg}]`,
         );
@@ -440,6 +443,31 @@ export abstract class TssSigner extends Communicator {
         this.logger.warn(`Invalid guard set passed to sign from [${sender}]`);
       return;
     }
+
+    // check signCache
+    if (Object.hasOwn(this.signCache, payload.msg)) {
+      this.logger.info(
+        `signing request for message [${
+          payload.msg
+        }] arrived and result exist in cache. sending cache signature [${
+          this.signCache[payload.msg].signature
+        }.${this.signCache[payload.msg].signatureRecovery}]...`,
+      );
+
+      // respond with sign cached message
+      const responsePayload: SignCachedPayload = {
+        msg: payload.msg,
+        signature: this.signCache[payload.msg].signature,
+        signatureRecovery: this.signCache[payload.msg].signatureRecovery,
+      };
+      return this.sendMessage(
+        cachedMessage,
+        responsePayload,
+        [sender],
+        timestamp,
+      );
+    }
+
     const sign = this.getSign(payload.msg);
     if (sign) {
       const unknown = await this.getUnknownGuards(payload.guards);
@@ -470,24 +498,7 @@ export abstract class TssSigner extends Communicator {
         }
       }
 
-      if (Object.hasOwn(this.signCache, sign.msg)) {
-        this.logger.info(
-          `signing request for message [${sign.msg}] arrived and result exist in cache. sending cache signature [${this.signCache[sign.msg].signature}.${this.signCache[sign.msg].signatureRecovery}]...`,
-        );
-
-        const responsePayload: SignCachedPayload = {
-          msg: payload.msg,
-          signature: this.signCache[sign.msg].signature,
-          signatureRecovery: this.signCache[sign.msg].signatureRecovery,
-        };
-
-        await this.sendMessage(
-          cachedMessage,
-          responsePayload,
-          [sender],
-          timestamp,
-        );
-      } else if (unknown.length === 0) {
+      if (unknown.length === 0) {
         this.logger.info(
           `signing request for message [${sign.msg}] approved. sending approval message`,
         );
@@ -645,6 +656,7 @@ export abstract class TssSigner extends Communicator {
    * store the signature in local cache
    * and call the callback
    * @param payload
+   * @param sender
    */
   protected handleSignCachedMessage = async (
     payload: SignCachedPayload,
@@ -658,18 +670,18 @@ export abstract class TssSigner extends Communicator {
       return;
     }
 
-    const verifiedSign = await this.getPkAndVerifySignature(
+    const signVerified = await this.getPkAndVerifySignature(
       sign.msg,
       payload.signature,
       sign.chainCode,
       sign.derivationPath,
     );
 
-    if (verifiedSign === false) {
+    if (signVerified === false) {
       this.logger.warn(
         `handleSignCachedMessage: failed to verify signature [${payload.signature}] with msg [${sign.msg}] and peerId [${sender}]`,
       );
-      return false;
+      return;
     }
 
     this.logger.debug(
@@ -815,7 +827,7 @@ export abstract class TssSigner extends Communicator {
    * @param id
    * @returns publicKey | undefined
    */
-  getPk = async (id: PublicKeyID): Promise<string | undefined> => {
+  protected getPk = async (id: PublicKeyID): Promise<string | undefined> => {
     this.logger.debug(
       `getPk requesting tss-api to get public key. crypto: ${this.signingCrypto}`,
     );
@@ -878,9 +890,10 @@ export abstract class TssSigner extends Communicator {
    * verify message signature
    * @param message
    * @param signature
-   * @param signerPublicKey
+   * @param chainCode
+   * @param derivationPath
    */
-  getPkAndVerifySignature = async (
+  protected getPkAndVerifySignature = async (
     message: string,
     signature: string,
     chainCode: string,
