@@ -435,19 +435,15 @@ describe('TssSigner', () => {
      * @target TssSigner.sign should call back with cached signature if cache record is available
      * @dependencies
      * @scenario
-     * - mock getPkAndVerifySignature
      * - mock signCache to contain cache record for message 'msg'
      * - mock callback
      * - call sign
      * @expected
      * - callback should have been called with expected arguments
      * - sign should not have been added to signs array
-     * - valid cached signature should not have been removed
+     * - cached signature should not have been removed
      */
     it('should call back with cached signature if cache record is available', async () => {
-      vi.spyOn(signer as any, 'getPkAndVerifySignature').mockResolvedValue(
-        true,
-      );
       signer.getSignCache()['msg'] = {
         signature: 'signature',
         signatureRecovery: 'signatureRecovery',
@@ -463,34 +459,6 @@ describe('TssSigner', () => {
       );
       expect(signer.getSigns()).toHaveLength(0);
       expect(signer.getSignCache()).toHaveProperty('msg');
-    });
-
-    /**
-     * @target TssSigner.sign should return when cached signature verification fails
-     * @dependencies
-     * @scenario
-     * - mock getPkAndVerifySignature to return false
-     * - mock signCache to contain cache record for message 'msg'
-     * - mock callback
-     * - call sign
-     * @expected
-     * - callback should not have been called
-     * - sign should not have been added to signs array
-     * - invalid cached signature should have been removed
-     */
-    it('should return when cached signature verification fails', async () => {
-      vi.spyOn(signer as any, 'getPkAndVerifySignature').mockResolvedValue(
-        false,
-      );
-      signer.getSignCache()['msg'] = {
-        signature: 'signature',
-        signatureRecovery: 'signatureRecovery',
-      };
-      const cb = vi.fn();
-      await signer.callSign('msg', cb, 'chainCode');
-      expect(cb).toHaveBeenCalledTimes(0);
-      expect(signer.getSigns()).toHaveLength(0);
-      expect(signer.getSignCache()).not.toHaveProperty('msg');
     });
 
     /**

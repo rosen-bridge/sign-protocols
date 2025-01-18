@@ -269,30 +269,11 @@ export abstract class TssSigner extends Communicator {
         `Using cached signature [${signResult.signature}.${signResult.signatureRecovery}] for message [${msg}]`,
       );
 
-      const verifiedSign = await this.getPkAndVerifySignature(
-        msg,
-        signResult.signature,
-        chainCode,
-        derivationPath,
-      );
-
-      if (verifiedSign === false) {
-        delete this.signCache[msg];
-        this.logger.warn(
-          `sign: failed to verify signature [${signResult.signature}] with msg [${msg}]`,
-        );
-        return;
-      }
-
-      this.logger.debug(
-        `sign: signature is valid [${signResult.signature}] with msg [${msg}]`,
-      );
-
       callback(
         true,
         undefined,
-        this.signCache[msg].signature,
-        this.signCache[msg].signatureRecovery,
+        signResult.signature,
+        signResult.signatureRecovery,
       );
       return;
     }
