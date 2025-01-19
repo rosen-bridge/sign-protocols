@@ -7,8 +7,8 @@ import {
   SignResult,
   SignStartPayload,
   TssSigner,
-} from '../../lib';
-import { ActiveGuard } from '@rosen-bridge/detection';
+} from "../../lib";
+import { ActiveGuard } from "@rosen-bridge/detection";
 
 export class TestTssSigner extends TssSigner {
   /**
@@ -167,7 +167,6 @@ export class TestTssSigner extends TssSigner {
    * @param message
    * @param signature
    * @param signerPublicKey
-   * @returns
    */
   verify = async (
     message: string,
@@ -181,7 +180,6 @@ export class TestTssSigner extends TssSigner {
    * @param signature
    * @param chainCode
    * @param derivationPath
-   * @returns
    */
   callGetPkAndVerifySignature = async (
     message: string,
@@ -203,15 +201,23 @@ export class TestTssSigner extends TssSigner {
     signatureRecovery?: string,
   ): Promise<void> => {
     if (signature) {
-      this.addSignToCache(sign.msg, {
-        signature: signature!,
-        signatureRecovery: signatureRecovery,
-      });
       sign.callback(true, undefined, signature, signatureRecovery);
     } else {
-      throw Error('signature is required when sign is successful');
+      throw Error("signature is required when sign is successful");
     }
   };
+
+  /**
+   * calls protected function wrappedHandleSuccessfulSign
+   * @param sign
+   * @param signature
+   * @param signatureRecovery
+   */
+  callWrappedHandleSuccessfulSign = async (
+    sign: Sign,
+    signature?: string,
+    signatureRecovery?: string,
+  ) => this.wrappedHandleSuccessfulSign(sign, signature, signatureRecovery);
 
   /**
    * sign message and return promise
