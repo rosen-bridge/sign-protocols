@@ -1,13 +1,13 @@
-import pkg from "secp256k1";
-import { Sign, SignerConfig, SignResult } from "../types/signer";
-import { TssSigner } from "./TssSigner";
+import pkg from 'secp256k1';
+import { Sign, SignerConfig, SignResult } from '../types/signer';
+import { TssSigner } from './TssSigner';
 
 export class EcdsaSigner extends TssSigner {
   constructor(config: SignerConfig) {
     super({
       logger: config.logger,
       guardsPk: config.guardsPk,
-      signingCrypto: "ecdsa",
+      signingCrypto: 'ecdsa',
       messageEnc: config.messageEnc,
       submitMsg: config.submitMsg,
       messageValidDuration: config.messageValidDuration,
@@ -77,7 +77,7 @@ export class EcdsaSigner extends TssSigner {
       sign.callback(true, undefined, signature, signatureRecovery);
     } else {
       throw Error(
-        "signature and signature recovery are required when ECDSA sign is successful",
+        'signature and signature recovery are required when ECDSA sign is successful',
       );
     }
   };
@@ -93,9 +93,9 @@ export class EcdsaSigner extends TssSigner {
     signature: string,
     signerPublicKey: string,
   ): Promise<boolean> => {
-    const msg = Buffer.from(message, "hex");
-    const sign = Buffer.from(signature, "hex");
-    const publicKey = Buffer.from(signerPublicKey, "hex");
+    const msg = Buffer.from(message, 'hex');
+    const sign = Buffer.from(signature, 'hex');
+    const publicKey = Buffer.from(signerPublicKey, 'hex');
     return pkg.ecdsaVerify(sign, msg, publicKey);
   };
 }

@@ -7,8 +7,8 @@ import {
   SignResult,
   SignStartPayload,
   TssSigner,
-} from "../../lib";
-import { ActiveGuard } from "@rosen-bridge/detection";
+} from '../../lib';
+import { ActiveGuard } from '@rosen-bridge/detection';
 
 export class TestTssSigner extends TssSigner {
   /**
@@ -203,7 +203,7 @@ export class TestTssSigner extends TssSigner {
     if (signature) {
       sign.callback(true, undefined, signature, signatureRecovery);
     } else {
-      throw Error("signature is required when sign is successful");
+      throw Error('signature is required when sign is successful');
     }
   };
 

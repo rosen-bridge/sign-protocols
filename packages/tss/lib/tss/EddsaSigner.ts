@@ -1,13 +1,13 @@
-import * as ed from "@noble/ed25519";
-import { Sign, SignerConfig, SignResult } from "../types/signer";
-import { TssSigner } from "./TssSigner";
+import * as ed from '@noble/ed25519';
+import { Sign, SignerConfig, SignResult } from '../types/signer';
+import { TssSigner } from './TssSigner';
 
 export class EddsaSigner extends TssSigner {
   constructor(config: SignerConfig) {
     super({
       logger: config.logger,
       guardsPk: config.guardsPk,
-      signingCrypto: "eddsa",
+      signingCrypto: 'eddsa',
       messageEnc: config.messageEnc,
       submitMsg: config.submitMsg,
       messageValidDuration: config.messageValidDuration,
@@ -70,7 +70,7 @@ export class EddsaSigner extends TssSigner {
     if (signature) {
       sign.callback(true, undefined, signature);
     } else {
-      throw Error("signature is required when EdDSA sign is successful");
+      throw Error('signature is required when EdDSA sign is successful');
     }
   };
 
