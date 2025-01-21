@@ -24,8 +24,7 @@ describe('Communicator', () => {
      * @target Communicator.getIndex should return exception when pk of guard doesn't exist between guardPks
      * @dependencies
      * @scenario
-     * - create encryption for 10 guards
-     * - override my encryption with wrong secret
+     * - override current guard message encryption with wrong
      * - create communicator
      * - call getIndex
      * @expected
@@ -45,7 +44,6 @@ describe('Communicator', () => {
      * @target Communicator.getIndex should return correct index 1
      * @dependencies
      * @scenario
-     * - create encryption for 10 guards
      * - create communicator and assign guardMessageEnc with index 1 as current guard
      * - call getIndex
      * @expected
