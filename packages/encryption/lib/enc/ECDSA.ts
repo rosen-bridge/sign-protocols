@@ -1,5 +1,5 @@
 import { EncryptionHandler } from '../abstract';
-import { blake2b } from 'blakejs';
+import { blake2b } from '@noble/hashes/blake2b';
 import pkg from 'secp256k1';
 
 class ECDSA extends EncryptionHandler {
@@ -22,7 +22,9 @@ class ECDSA extends EncryptionHandler {
    * @param message
    */
   sign = async (message: string): Promise<string> => {
-    const bytes = blake2b(message, undefined, 32);
+    const bytes = blake2b(message, {
+      dkLen: 32,
+    });
     const signed = pkg.ecdsaSign(bytes, this.key);
     return Buffer.from(signed.signature).toString('hex');
   };
@@ -38,7 +40,9 @@ class ECDSA extends EncryptionHandler {
     signature: string,
     signerPublicKey: string,
   ): Promise<boolean> => {
-    const msg = blake2b(message, undefined, 32);
+    const msg = blake2b(message, {
+      dkLen: 32,
+    });
     const sign = Buffer.from(signature, 'hex');
     const publicKey = Buffer.from(signerPublicKey, 'hex');
     return pkg.ecdsaVerify(sign, msg, publicKey);

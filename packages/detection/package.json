@@ -17,6 +17,9 @@
     "test": "NODE_OPTIONS=--loader=extensionless vitest ",
     "type-check": "tsc --noEmit"
   },
+  "files": [
+    "dist"
+  ],
   "devDependencies": {
     "@types/node": "^20.11.9",
     "@typescript-eslint/eslint-plugin": "^6.19.1",
@@ -30,7 +33,7 @@
     "vitest": "^1.2.2"
   },
   "dependencies": {
-    "@rosen-bridge/abstract-logger": "^1.0.0",
+    "@rosen-bridge/abstract-logger": "^2.0.1",
     "@rosen-bridge/communication": "^1.0.0",
     "@rosen-bridge/encryption": "^0.1.0"
   },

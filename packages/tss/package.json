@@ -3,8 +3,8 @@
   "version": "4.1.0",
   "description": "TypeScript library for building and validating TSS signatures.",
   "repository": "https://github.com/rosen-bridge/sign-protocols",
-  "main": "dist/lib/index.js",
-  "types": "dist/lib/index.d.ts",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "type": "module",
   "scripts": {
     "prettify": "prettier --write . --ignore-path .gitignore",
@@ -41,15 +41,14 @@
     "rosen"
   ],
   "dependencies": {
-    "@noble/ed25519": "^2.0.0",
-    "@noble/hashes": "^1.3.1",
-    "@rosen-bridge/abstract-logger": "^1.0.0",
+    "@noble/ed25519": "^2.2.3",
+    "@noble/hashes": "^1.7.1",
+    "@rosen-bridge/abstract-logger": "^2.0.1",
     "@rosen-bridge/communication": "^1.0.0",
     "@rosen-bridge/encryption": "^0.1.0",
     "@rosen-bridge/detection": "^1.0.0",
     "await-semaphore": "^0.1.3",
     "axios": "^1.4.0",
-    "blakejs": "^1.2.1",
     "secp256k1": "^4.0.3"
   }
 }
