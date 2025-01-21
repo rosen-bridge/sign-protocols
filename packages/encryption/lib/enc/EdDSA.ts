@@ -16,7 +16,7 @@ class EdDSA extends EncryptionHandler {
    * get public key
    */
   getPk = async () => {
-    return Buffer.from(await ed.getPublicKey(this.key)).toString('hex');
+    return Buffer.from(ed.getPublicKey(this.key)).toString('hex');
   };
 
   /**
