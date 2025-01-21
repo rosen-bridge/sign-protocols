@@ -1,8 +1,11 @@
 import { Communicator } from '@rosen-bridge/communication';
 import {
+  PublicKeyID,
+  GetPublicKeyResponse,
   PendingSign,
   Sign,
   SignApprovePayload,
+  SignCachedPayload,
   SignerBaseConfig,
   SignMessageType,
   SignRequestPayload,
@@ -20,6 +23,8 @@ import {
 } from '../const/const';
 import {
   approveMessage,
+  cachedMessage,
+  getPkUrl,
   requestMessage,
   signUrl,
   startMessage,
@@ -27,7 +32,7 @@ import {
 } from '../const/signer';
 import { DummyLogger } from '@rosen-bridge/abstract-logger';
 import { Mutex } from 'await-semaphore';
-import axios, { AxiosInstance } from 'axios';
+import axios, { AxiosInstance, AxiosResponse } from 'axios';
 
 export abstract class TssSigner extends Communicator {
   protected readonly axios: AxiosInstance;
@@ -41,6 +46,7 @@ export abstract class TssSigner extends Communicator {
   protected readonly responseDelay: number;
   protected lastUpdateRound: number;
   protected signs: Array<Sign>;
+  protected signCache: Record<string, SignResult>;
   protected pendingSigns: Array<PendingSign>;
   protected readonly detection: GuardDetection;
   protected readonly getPeerId: () => Promise<string>;
@@ -48,6 +54,7 @@ export abstract class TssSigner extends Communicator {
   protected readonly signAccessMutex: Mutex;
   protected readonly shares: Array<string>;
   protected readonly signPerRoundLimit: number;
+  protected readonly signCacheTTLSeconds: number;
 
   /**
    * get threshold value from tss-api instance if threshold didn't set or expired and set for this and detection
@@ -110,11 +117,13 @@ export abstract class TssSigner extends Communicator {
     this.getPeerId = config.getPeerId;
     this.shares = config.shares;
     this.signs = [];
+    this.signCache = {};
     this.pendingSigns = [];
     this.pendingAccessMutex = new Mutex();
     this.signAccessMutex = new Mutex();
     this.responseDelay = config.responseDelay ?? 5;
     this.signPerRoundLimit = config.signPerRoundLimit ?? 2;
+    this.signCacheTTLSeconds = config.signCacheTTLSeconds ?? 7_200;
   }
 
   /**
@@ -132,6 +141,24 @@ export abstract class TssSigner extends Communicator {
       (pending) => pending.index === turn,
     );
     releasePending();
+  };
+
+  /**
+   * cache a signature
+   * @param message
+   * @param signResult
+   */
+  protected addSignToCache = (message: string, signResult: SignResult) => {
+    if (Object.hasOwn(this.signCache, message)) {
+      this.logger.debug(
+        `Got signature [${signResult.signature}.${signResult.signatureRecovery}] to cache but message [${message}] has already a signature: ${this.signCache[message].signature}.${this.signCache[message].signatureRecovery}`,
+      );
+      return;
+    }
+    this.signCache[message] = signResult;
+    setTimeout(() => {
+      delete this.signCache[message];
+    }, this.signCacheTTLSeconds * 1000);
   };
 
   /**
@@ -220,13 +247,35 @@ export abstract class TssSigner extends Communicator {
    */
   protected sign = async (
     msg: string,
-    callback: (status: boolean, message?: string, args?: string) => unknown,
+    callback: (
+      status: boolean,
+      message?: string,
+      signature?: string,
+      signatureRecovery?: string,
+    ) => unknown,
     chainCode: string,
     derivationPath?: number[],
   ) => {
     if (this.getSign(msg, true)) {
       throw Error('already signing this message');
     }
+
+    if (Object.hasOwn(this.signCache, msg)) {
+      const signResult = this.signCache[msg]!;
+
+      this.logger.info(
+        `Using cached signature [${signResult.signature}.${signResult.signatureRecovery}] for message [${msg}]`,
+      );
+
+      callback(
+        true,
+        undefined,
+        signResult.signature,
+        signResult.signatureRecovery,
+      );
+      return;
+    }
+
     const release = await this.signAccessMutex.acquire();
     this.logger.info(`adding new message [${msg}] to signing queue`);
     this.signs.push({
@@ -298,6 +347,11 @@ export abstract class TssSigner extends Communicator {
           senderIndex,
           sign,
         );
+      case cachedMessage:
+        return this.handleSignCachedMessage(
+          payload as SignCachedPayload,
+          peerId,
+        );
       case startMessage:
         return this.handleStartMessage(
           payload as SignStartPayload,
@@ -368,6 +422,31 @@ export abstract class TssSigner extends Communicator {
         this.logger.warn(`Invalid guard set passed to sign from [${sender}]`);
       return;
     }
+
+    // check signCache
+    if (Object.hasOwn(this.signCache, payload.msg)) {
+      this.logger.info(
+        `signing request for message [${
+          payload.msg
+        }] arrived and result exist in cache. sending cache signature [${
+          this.signCache[payload.msg].signature
+        }.${this.signCache[payload.msg].signatureRecovery}]...`,
+      );
+
+      // respond with sign cached message
+      const responsePayload: SignCachedPayload = {
+        msg: payload.msg,
+        signature: this.signCache[payload.msg].signature,
+        signatureRecovery: this.signCache[payload.msg].signatureRecovery,
+      };
+      return this.sendMessage(
+        cachedMessage,
+        responsePayload,
+        [sender],
+        timestamp,
+      );
+    }
+
     const sign = this.getSign(payload.msg);
     if (sign) {
       const unknown = await this.getUnknownGuards(payload.guards);
@@ -397,6 +476,7 @@ export abstract class TssSigner extends Communicator {
           );
         }
       }
+
       if (unknown.length === 0) {
         this.logger.info(
           `signing request for message [${sign.msg}] approved. sending approval message`,
@@ -452,6 +532,17 @@ export abstract class TssSigner extends Communicator {
       return filtered[0];
     }
     return undefined;
+  };
+
+  /**
+   * remove a signing message in sign queue.
+   * @param msg
+   */
+  protected removeSign = (msg: string) => {
+    return this.signAccessMutex.acquire().then((release) => {
+      this.signs = this.signs.filter((item) => item.msg !== msg);
+      release();
+    });
   };
 
   /**
@@ -537,6 +628,52 @@ export abstract class TssSigner extends Communicator {
         'new message arrived but current guard is in no-work-period',
       );
     }
+  };
+
+  /**
+   * handle sign cached message
+   * store the signature in local cache
+   * and call the callback
+   * @param payload
+   * @param sender
+   */
+  protected handleSignCachedMessage = async (
+    payload: SignCachedPayload,
+    sender: string,
+  ) => {
+    const sign = this.getSign(payload.msg);
+    if (!sign) {
+      this.logger.debug(
+        `handleSignCachedMessage: signing message not found [${payload.msg}]`,
+      );
+      return;
+    }
+
+    const signVerified = await this.getPkAndVerifySignature(
+      sign.msg,
+      payload.signature,
+      sign.chainCode,
+      sign.derivationPath,
+    );
+
+    if (signVerified === false) {
+      this.logger.warn(
+        `handleSignCachedMessage: failed to verify signature [${payload.signature}] with msg [${sign.msg}] and peerId [${sender}]`,
+      );
+      return;
+    }
+
+    this.logger.debug(
+      `handleSignCachedMessage: signature is valid [${payload.signature}] with msg [${sign.msg}]`,
+    );
+
+    await this.wrappedHandleSuccessfulSign(
+      sign,
+      payload.signature,
+      payload.signatureRecovery,
+    );
+
+    return this.removeSign(payload.msg);
   };
 
   /**
@@ -665,6 +802,31 @@ export abstract class TssSigner extends Communicator {
   };
 
   /**
+   * request tss-api for a public-key using an identifier
+   * @param id
+   * @returns publicKey | undefined
+   */
+  protected getPk = async (id: PublicKeyID): Promise<string | undefined> => {
+    this.logger.debug(
+      `getPk requesting tss-api to get public key. crypto: ${this.signingCrypto}`,
+    );
+    try {
+      // tss-api responds with http error if requested public key be unavailable
+      const result: AxiosResponse<GetPublicKeyResponse> = await this.axios.post(
+        getPkUrl,
+        { ...id, crypto: this.signingCrypto },
+      );
+      this.logger.debug(
+        `getPk done id: [${JSON.stringify(id)}] ${JSON.stringify(result.data)}`,
+      );
+      return result.data.publicKey;
+    } catch (error) {
+      this.logger.error(`getPk error from tss-api, ${JSON.stringify(error)}`);
+    }
+    return undefined;
+  };
+
+  /**
    * handle signing data callback for a message and process callback function
    * @param status
    * @param message
@@ -684,14 +846,15 @@ export abstract class TssSigner extends Communicator {
       throw Error('Invalid message');
     }
     if (status === StatusEnum.Success) {
-      await this.handleSuccessfulSign(sign, signature, signatureRecovery);
+      await this.wrappedHandleSuccessfulSign(
+        sign,
+        signature,
+        signatureRecovery,
+      );
     } else {
       sign.callback(false, error);
     }
-    return this.signAccessMutex.acquire().then((release) => {
-      this.signs = this.signs.filter((item) => item.msg !== message);
-      release();
-    });
+    return this.removeSign(message);
   };
 
   /**
@@ -705,4 +868,65 @@ export abstract class TssSigner extends Communicator {
     signature?: string,
     signatureRecovery?: string,
   ) => Promise<void>;
+
+  /**
+   * a wrapper to cache sign result after handleSuccessfulSign
+   * @param sign
+   * @param signature
+   * @param signatureRecovery
+   */
+  protected wrappedHandleSuccessfulSign = async (
+    sign: Sign,
+    signature?: string,
+    signatureRecovery?: string,
+  ) => {
+    await this.handleSuccessfulSign(sign, signature, signatureRecovery);
+    this.addSignToCache(sign.msg, {
+      signature: signature!,
+      signatureRecovery,
+    });
+  };
+
+  /**
+   * verify message signature
+   * @param message
+   * @param signature
+   * @param chainCode
+   * @param derivationPath
+   */
+  protected getPkAndVerifySignature = async (
+    message: string,
+    signature: string,
+    chainCode: string,
+    derivationPath?: number[],
+  ): Promise<boolean> => {
+    const pkId: PublicKeyID = {
+      chainCode: chainCode,
+      derivationPath: derivationPath ?? [],
+    };
+
+    const publicKey = await this.getPk(pkId);
+
+    if (publicKey === undefined) {
+      this.logger.error(
+        `getPkAndVerifySignature: failed to get public key [${this.signingCrypto}] with chaincode [${chainCode}] and derivation path [${derivationPath}]`,
+      );
+      return false;
+    }
+
+    // TODO: also verify signatureRecovery. local:ergo/rosen-bridge/sign-protocols#31
+    return await this.verify(message, signature, publicKey);
+  };
+
+  /**
+   * verify message signature
+   * @param message
+   * @param signature
+   * @param signerPublicKey
+   */
+  abstract verify: (
+    message: string,
+    signature: string,
+    signerPublicKey: string,
+  ) => Promise<boolean>;
 }

@@ -1,3 +1,4 @@
+import pkg from 'secp256k1';
 import { Sign, SignerConfig, SignResult } from '../types/signer';
 import { TssSigner } from './TssSigner';
 
@@ -79,5 +80,22 @@ export class EcdsaSigner extends TssSigner {
         'signature and signature recovery are required when ECDSA sign is successful',
       );
     }
+  };
+
+  /**
+   * verify message signature
+   * @param message hex string
+   * @param signature hex string
+   * @param signerPublicKey hex string
+   */
+  verify = async (
+    message: string,
+    signature: string,
+    signerPublicKey: string,
+  ): Promise<boolean> => {
+    const msg = Buffer.from(message, 'hex');
+    const sign = Buffer.from(signature, 'hex');
+    const publicKey = Buffer.from(signerPublicKey, 'hex');
+    return pkg.ecdsaVerify(sign, msg, publicKey);
   };
 }

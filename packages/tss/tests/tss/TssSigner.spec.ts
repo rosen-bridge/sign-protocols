@@ -5,6 +5,7 @@ import { TestTssSigner } from './TestTssSigner';
 import { generateSigners } from '../testUtils';
 import {
   approveMessage,
+  cachedMessage,
   requestMessage,
   startMessage,
 } from '../../lib/const/signer';
@@ -40,6 +41,7 @@ describe('TssSigner', () => {
       tssApiUrl: '',
       getPeerId: () => Promise.resolve('myPeerId'),
       shares: signers.guardPks,
+      signCacheTTLSeconds: 0.05,
     });
   });
 
@@ -136,6 +138,72 @@ describe('TssSigner', () => {
       });
       await (signer as any).cleanup();
       expect(signer.getPendingSigns().length).toEqual(1);
+    });
+  });
+
+  describe('addSignToCache', () => {
+    /**
+     * @target TssSigner.addSignToCache should add SignResult to signCache
+     * @dependencies
+     * @scenario
+     * - call addSignToCache with signature record
+     * - wait 25ms
+     * - check signCache
+     * - wait 25ms
+     * - check signCache
+     * @expected
+     * - before ttl signCache should have contained the SignResult
+     * - after ttl signCache should have contained the SignResult
+     */
+    it('should add SignResult to signCache', async () => {
+      const msg = 'test message';
+      const signResult = {
+        signature: 'signature',
+        signatureRecovery: 'signatureRecovery',
+      };
+      signer.callAddSignToCache(msg, signResult);
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      expect(signer.getSignCache()).toHaveProperty(msg);
+      expect(signer.getSignCache()[msg]).toMatchObject(signResult);
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      expect(Object.keys(signer.getSignCache())).toHaveLength(0);
+    });
+
+    /**
+     * @target TssSigner.addSignToCache should return if message already is in cache
+     * @dependencies
+     * @scenario
+     * - call addSignToCache with signature record
+     * - wait 25ms
+     * - call addSignToCache again with the same message and different signature
+     * - check signCache
+     * - wait 25ms
+     * - check signCache
+     * @expected
+     * - signCache should have contained 1 record with 'msg' as key and 'signature' as value
+     * - after cache ttl signCache should have been empty
+     */
+    it('should return if message already is in cache', async () => {
+      const msg = 'mgs';
+      signer.callAddSignToCache(msg, {
+        signature: 'signature',
+        signatureRecovery: '',
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 25));
+
+      signer.callAddSignToCache(msg, {
+        signature: 'signature2',
+        signatureRecovery: '',
+      });
+
+      expect(Object.keys(signer.getSignCache())).toHaveLength(1);
+      expect(signer.getSignCache()).toHaveProperty(msg);
+      expect(signer.getSignCache()[msg].signature).toEqual('signature');
+
+      await new Promise((resolve) => setTimeout(resolve, 25));
+
+      expect(Object.keys(signer.getSignCache())).toHaveLength(0);
     });
   });
 
@@ -274,7 +342,7 @@ describe('TssSigner', () => {
     });
 
     /**
-     * @target TssSigner.update should update sings array
+     * @target TssSigner.update should update signs array
      * @dependencies
      * @scenario
      * - mock activeGuards to return a list of 7 active guard
@@ -284,7 +352,7 @@ describe('TssSigner', () => {
      * - signs array must be a list of 10 element
      * - only first element must have value
      */
-    it('should update sings array', async () => {
+    it('should update signs array', async () => {
       vi.setSystemTime(new Date(1686285600608));
       const activeGuards = Array(7)
         .fill('')
@@ -364,6 +432,36 @@ describe('TssSigner', () => {
     });
 
     /**
+     * @target TssSigner.sign should call back with cached signature if cache record is available
+     * @dependencies
+     * @scenario
+     * - mock signCache to contain cache record for message 'msg'
+     * - mock callback
+     * - call sign
+     * @expected
+     * - callback should have been called with expected arguments
+     * - sign should not have been added to signs array
+     * - cached signature should not have been removed
+     */
+    it('should call back with cached signature if cache record is available', async () => {
+      signer.getSignCache()['msg'] = {
+        signature: 'signature',
+        signatureRecovery: 'signatureRecovery',
+      };
+      const cb = vi.fn();
+      await signer.callSign('msg', cb, 'chainCode');
+      expect(cb).toHaveBeenCalledTimes(1);
+      expect(cb).toHaveBeenCalledWith(
+        true,
+        undefined,
+        'signature',
+        'signatureRecovery',
+      );
+      expect(signer.getSigns()).toHaveLength(0);
+      expect(signer.getSignCache()).toHaveProperty('msg');
+    });
+
+    /**
      * @target TssSigner.sign should call handleRequestMessage if msg in pending state
      * @dependencies
      * @scenario
@@ -437,6 +535,26 @@ describe('TssSigner', () => {
       );
       expect(mockedFn).toHaveBeenCalledTimes(1);
       expect(mockedFn).toHaveBeenCalledWith({}, 'peerId', 1, 'sign');
+    });
+
+    /**
+     * @target TssSigner.processMessage should call handleSignCachedMessage
+     * when message type is cacheMessage
+     * @dependencies
+     * @scenario
+     * - mock handleSignCachedMessage
+     * - call processMessage
+     * @expected
+     * - handleSignCachedMessage should have been called with expected arguments
+     */
+    it('should call handleSignCachedMessage when message type is cacheMessage', async () => {
+      const mockedHandleSignCachedMessage = vi
+        .spyOn(signer as any, 'handleSignCachedMessage')
+        .mockResolvedValue(undefined);
+
+      await signer.processMessage(cachedMessage, {}, 'sign', 1, 'peerId', 1234);
+      expect(mockedHandleSignCachedMessage).toHaveBeenCalledTimes(1);
+      expect(mockedHandleSignCachedMessage).toHaveBeenCalledWith({}, 'peerId');
     });
 
     /**
@@ -563,6 +681,48 @@ describe('TssSigner', () => {
         msg: 'test message',
         guards: activeGuards,
         initGuardIndex: 6,
+      });
+      expect(msg.timestamp).toEqual(timestamp);
+    });
+
+    /**
+     * @target TssSigner.handleRequestMessage should send cached message when all conditions are OK and signature exist in cache
+     * @dependencies
+     * @scenario
+     * - mock a list of active guards
+     * - mock signCache to contain record with key 'msg'
+     * - call mockedHandleRequestMessage with 'msg'
+     * @expected
+     * - send message called once with
+     *   - second argument with ['sender']
+     *   - first argument is a json
+     *     - type is cachedMessage
+     *     - payload is SignCachedPayload
+     *     - timestamp same as called timestamp
+     */
+    it('should send cached message when all conditions are OK and signature exist in cache', async () => {
+      signer.getSignCache()['msg'] = {
+        signature: 'signature',
+        signatureRecovery: 'signatureRecovery',
+      };
+      await signer.mockedHandleRequestMessage(
+        {
+          msg: 'msg',
+          guards: activeGuards,
+        },
+        'sender',
+        6,
+        timestamp,
+        true,
+      );
+      expect(mockSubmit).toHaveBeenCalledTimes(1);
+      expect(mockSubmit).toHaveBeenCalledWith(expect.any(String), ['sender']);
+      const msg = JSON.parse(mockSubmit.mock.calls[0][0]);
+      expect(msg.type).toEqual(cachedMessage);
+      expect(msg.payload).toEqual({
+        msg: 'msg',
+        signature: 'signature',
+        signatureRecovery: 'signatureRecovery',
       });
       expect(msg.timestamp).toEqual(timestamp);
     });
@@ -851,6 +1011,76 @@ describe('TssSigner', () => {
     });
   });
 
+  describe('removeSign', () => {
+    let activeGuards: Array<ActiveGuard>;
+    beforeEach(async () => {
+      activeGuards = [
+        { peerId: 'peerId-1', publicKey: await guardMessageEncs[1].getPk() },
+        { peerId: 'peerId-2', publicKey: await guardMessageEncs[2].getPk() },
+        { peerId: 'peerId-3', publicKey: await guardMessageEncs[3].getPk() },
+      ];
+    });
+
+    const addSign = (msg: string) => {
+      signer.getSigns().push({
+        msg,
+        signs: Array(10).fill(''),
+        addedTime: timestamp,
+        callback: vi.fn(),
+        request: {
+          index: 0,
+          guards: activeGuards,
+          timestamp,
+        },
+        posted: false,
+        chainCode: 'chainCode',
+      });
+    };
+
+    /**
+     * @target TssSigner.removeSign should do nothing when called with non-existing sign message
+     * @dependencies
+     * @scenario
+     * - mock signs
+     * - call removeSign
+     * @expected
+     * - signs should have been the same as before removeSign call
+     */
+    it('should do nothing when called with non-existing sign message', async () => {
+      // mock signs
+      addSign('test message');
+      addSign('test message2');
+
+      // call removeSign
+      await signer.callRemoveSign('');
+
+      expect(signer.getSigns().length).toBe(2);
+      expect(signer.getSigns()[0].msg).toBe('test message');
+      expect(signer.getSigns()[1].msg).toBe('test message2');
+    });
+
+    /**
+     * @target TssSigner.removeSign should remove sign when input message matches a sign message
+     * @dependencies
+     * @scenario
+     * - mock signs
+     * - call removeSign
+     * @expected
+     * - sign that its message matched requested message should have been removed from signs
+     */
+    it('should remove sign when input message matches a sign message', async () => {
+      // mock signs
+      addSign('test message');
+      addSign('test message2');
+
+      // call removeSign
+      await signer.callRemoveSign('test message2');
+
+      expect(signer.getSigns().length).toBe(1);
+      expect(signer.getSigns()[0].msg).toBe('test message');
+    });
+  });
+
   describe('getPendingSign', () => {
     /**
      * @target GuardDetection.getPendingSign should return pendingSign instance from list
@@ -1111,6 +1341,193 @@ describe('TssSigner', () => {
       );
       expect(mockedStartSign).toHaveBeenCalledTimes(0);
       expect(mockSubmit).toHaveBeenCalledTimes(0);
+    });
+  });
+
+  describe('handleSignCachedMessage', () => {
+    const addSign = async (msg: string) => {
+      const sign = {
+        msg,
+        signs: Array(10).fill(''),
+        addedTime: timestamp,
+        callback: vi.fn(),
+        request: {
+          index: 0,
+          guards: [
+            {
+              peerId: 'peerId-1',
+              publicKey: await guardMessageEncs[1].getPk(),
+            },
+            {
+              peerId: 'peerId-2',
+              publicKey: await guardMessageEncs[2].getPk(),
+            },
+            {
+              peerId: 'peerId-3',
+              publicKey: await guardMessageEncs[3].getPk(),
+            },
+          ],
+          timestamp,
+        },
+        posted: false,
+        chainCode: 'chainCode',
+      };
+      signer.getSigns().push(sign);
+      return sign;
+    };
+
+    /**
+     * @target TssSigner.handleSignCachedMessage should return if sign record doesn't exist
+     * @dependencies
+     * @scenario
+     * - mock getPkAndVerifySignature
+     * - mock wrappedHandleSuccessfulSign
+     * - call handleSignCachedMessage
+     * @expected
+     * - getPkAndVerifySignature should not have been called
+     * - wrappedHandleSuccessfulSign should not have been called
+     * - signature should not have been added to signCache
+     */
+    it("should return if sign record doesn't exist", async () => {
+      // mock getPkAndVerifySignature
+      const mockedGetPkAndVerifySignature = vi
+        .spyOn(signer as any, 'getPkAndVerifySignature')
+        .mockResolvedValue(true);
+
+      // mock wrappedHandleSuccessfulSign
+      const mockedWrappedHandleSuccessfulSign = vi
+        .spyOn(signer as any, 'wrappedHandleSuccessfulSign')
+        .mockResolvedValue(undefined);
+
+      // call handleSignCachedMessage with cached message
+      await signer.callHandleSignCachedMessage(
+        {
+          msg: 'test message',
+          signature: 'signature',
+          signatureRecovery: 'signatureRecovery',
+        },
+        'sender',
+      );
+
+      // getPkAndVerifySignature should not have been called
+      expect(mockedGetPkAndVerifySignature).toHaveBeenCalledTimes(0);
+
+      // wrappedHandleSuccessfulSign should not have been called
+      expect(mockedWrappedHandleSuccessfulSign).toHaveBeenCalledTimes(0);
+
+      // signature should not have been added to signCache
+      expect(signer.getSignCache()).not.toHaveProperty('test message');
+    });
+
+    /**
+     * @target TssSigner.handleSignCachedMessage should call wrappedHandleSuccessfulSign even when approving guards are less than threshold
+     * @dependencies
+     * @scenario
+     * - mock sign
+     * - mock getPkAndVerifySignature
+     * - mock wrappedHandleSuccessfulSign
+     * - call handleSignCachedMessage
+     * @expected
+     * - getPkAndVerifySignature should have been called
+     * - wrappedHandleSuccessfulSign should have been called
+     * - sign record should have been removed from sign array
+     */
+    it('should call wrappedHandleSuccessfulSign even when approving guards are less than threshold', async () => {
+      // mock sign
+      const sign = await addSign('test message');
+
+      // mock getPkAndVerifySignature
+      const mockedGetPkAndVerifySignature = vi
+        .spyOn(signer as any, 'getPkAndVerifySignature')
+        .mockResolvedValue(true);
+
+      // mock wrappedHandleSuccessfulSign
+      const mockedWrappedHandleSuccessfulSign = vi
+        .spyOn(signer as any, 'wrappedHandleSuccessfulSign')
+        .mockResolvedValue(undefined);
+
+      // call handleSignCachedMessage
+      await signer.callHandleSignCachedMessage(
+        {
+          msg: 'test message',
+          signature: 'signature',
+          signatureRecovery: 'signatureRecovery',
+        },
+        'sender',
+      );
+
+      // getPkAndVerifySignature should have been called
+      expect(mockedGetPkAndVerifySignature).toHaveBeenCalledTimes(1);
+      expect(mockedGetPkAndVerifySignature).toHaveBeenCalledWith(
+        'test message',
+        'signature',
+        'chainCode',
+        undefined,
+      );
+
+      // wrappedHandleSuccessfulSign should have been called
+      expect(mockedWrappedHandleSuccessfulSign).toHaveBeenCalledTimes(1);
+      expect(mockedWrappedHandleSuccessfulSign).toHaveBeenCalledWith(
+        sign,
+        'signature',
+        'signatureRecovery',
+      );
+
+      // sign record should have been removed from sign array
+      expect(signer.mockedGetSign('test message')).toBeUndefined();
+    });
+
+    /**
+     * @target TssSigner.handleSignCachedMessage should return if signature is not valid
+     * @dependencies
+     * @scenario
+     * - mock sign
+     * - mock getPkAndVerifySignature
+     * - mock wrappedHandleSuccessfulSign
+     * - call handleSignCachedMessage
+     * @expected
+     * - getPkAndVerifySignature should have been called
+     * - wrappedHandleSuccessfulSign should not have been called
+     * - signs array should have contained the signature
+     */
+    it('should return if signature is not valid', async () => {
+      // mock sign
+      await addSign('test message');
+
+      // mock getPkAndVerifySignature
+      const mockedGetPkAndVerifySignature = vi
+        .spyOn(signer as any, 'getPkAndVerifySignature')
+        .mockResolvedValue(false);
+
+      // mock wrappedHandleSuccessfulSign
+      const mockedWrappedHandleSuccessfulSign = vi
+        .spyOn(signer as any, 'wrappedHandleSuccessfulSign')
+        .mockResolvedValue(undefined);
+
+      // call handleSignCachedMessage
+      await signer.callHandleSignCachedMessage(
+        {
+          msg: 'test message',
+          signature: 'signature',
+          signatureRecovery: 'signatureRecovery',
+        },
+        'sender',
+      );
+
+      // getPkAndVerifySignature should have been called
+      expect(mockedGetPkAndVerifySignature).toHaveBeenCalledTimes(1);
+      expect(mockedGetPkAndVerifySignature).toHaveBeenCalledWith(
+        'test message',
+        'signature',
+        'chainCode',
+        undefined,
+      );
+
+      // wrappedHandleSuccessfulSign should not have been called
+      expect(mockedWrappedHandleSuccessfulSign).toHaveBeenCalledTimes(0);
+
+      // signs array should have contained the signature
+      expect(signer.mockedGetSign('test message')).toBeDefined();
     });
   });
 
@@ -1399,6 +1816,97 @@ describe('TssSigner', () => {
     });
   });
 
+  describe('wrappedHandleSuccessfulSign', () => {
+    /**
+     * @target TssSigner.wrappedHandleSuccessfulSign should call handleSuccessfulSign then on resolve cache the sign result
+     * @dependencies
+     * @scenario
+     * - mock handleSuccessfulSign to resolve
+     * - call wrappedHandleSuccessfulSign
+     * @expected
+     * - handleSuccessfulSign should have been called
+     * - signature should have been added to signCache
+     */
+    it('should call handleSuccessfulSign then on resolve cache the sign result', async () => {
+      // mock handleSuccessfulSign to resolve
+      const mockedHandleSuccessfulSign = vi
+        .spyOn(signer as any, 'handleSuccessfulSign')
+        .mockResolvedValue(undefined);
+
+      const sign = {
+        msg: 'msg',
+        signs: [],
+        addedTime: timestamp,
+        callback: () => null,
+        posted: false,
+        chainCode: 'chainCode',
+      };
+
+      // call wrappedHandleSuccessfulSign
+      await signer.callWrappedHandleSuccessfulSign(
+        sign,
+        'signature',
+        'signatureRecovery',
+      );
+
+      expect(mockedHandleSuccessfulSign).toHaveBeenCalledTimes(1);
+      expect(mockedHandleSuccessfulSign).toHaveBeenCalledWith(
+        sign,
+        'signature',
+        'signatureRecovery',
+      );
+      expect(signer.getSignCache()['msg']).toMatchObject({
+        signature: 'signature',
+        signatureRecovery: 'signatureRecovery',
+      });
+    });
+
+    /**
+     * @target TssSigner.wrappedHandleSuccessfulSign should not cache sign result if handleSuccessfulSign rejects
+     * @dependencies
+     * @scenario
+     * - mock handleSuccessfulSign to reject
+     * - call wrappedHandleSuccessfulSign
+     * @expected
+     * - handleSuccessfulSign should have been called
+     * - signature should not have been cached
+     */
+    it('should not cache sign result if handleSuccessfulSign rejects', async () => {
+      // mock handleSuccessfulSign to reject
+      const mockedHandleSuccessfulSign = vi
+        .spyOn(signer as any, 'handleSuccessfulSign')
+        .mockRejectedValueOnce(new Error(''));
+
+      const sign = {
+        msg: 'msg',
+        signs: [],
+        addedTime: timestamp,
+        callback: () => null,
+        posted: false,
+        chainCode: 'chainCode',
+      };
+
+      // call wrappedHandleSuccessfulSign
+      try {
+        await signer.callWrappedHandleSuccessfulSign(
+          sign,
+          'signature',
+          undefined,
+        );
+      } catch (error) {
+        //
+      }
+
+      expect(mockedHandleSuccessfulSign).toHaveBeenCalledTimes(1);
+      expect(mockedHandleSuccessfulSign).toHaveBeenCalledWith(
+        sign,
+        'signature',
+        undefined,
+      );
+      expect(signer.getSignCache()['msg']).toBeUndefined();
+    });
+  });
+
   describe('getApprovedGuards', () => {
     /**
      * @target TssSigner.getApprovedGuards should not return selected guard when signature is empty string
@@ -1554,6 +2062,118 @@ describe('TssSigner', () => {
       vi.setSystemTime(new Date(currentTime + 1));
       await signer.mockedUpdateThreshold();
       expect(mockedAxios).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('getPkAndVerifySignature', () => {
+    /**
+     * @target TssSigner.getPkAndVerifySignature should return false when response from getPk is undefined
+     * @dependencies
+     * @scenario
+     * - mock getPk
+     * - call getPkAndVerifySignature
+     * @expected
+     * - getPk should have been called with correct PublicKeyID
+     * - getPkAndVerifySignature should have returned false
+     */
+    it('should return false when response from getPk is undefined', async () => {
+      // mock getPk
+      const mockedGetPk = vi
+        .spyOn(signer as any, 'getPk')
+        .mockResolvedValue(undefined);
+
+      // call getPkAndVerifySignature
+      const verified = await signer.callGetPkAndVerifySignature(
+        'test message',
+        'signature',
+        'chainCode',
+        [0, 0, 0, 0],
+      );
+
+      expect(mockedGetPk).toHaveBeenCalledTimes(1);
+      expect(mockedGetPk).toHaveBeenCalledWith({
+        chainCode: 'chainCode',
+        derivationPath: [0, 0, 0, 0],
+      });
+      expect(verified).toBe(false);
+    });
+
+    /**
+     * @target TssSigner.getPkAndVerifySignature should return true when verify succeeds
+     * @dependencies
+     * @scenario
+     * - mock getPk
+     * - mock verify to return true
+     * - call getPkAndVerifySignature with valid args
+     * @expected
+     * - getPk should have been called with correct PublicKeyID
+     * - verify should have been called with message, signature and public key
+     * - getPkAndVerifySignature should have returned true
+     */
+    it('should return true when verify succeeds', async () => {
+      // mock getPk
+      const mockedGetPk = vi
+        .spyOn(signer as any, 'getPk')
+        .mockResolvedValue('pk');
+
+      // mock verify to return true
+      const mockedVerify = vi.spyOn(signer, 'verify').mockResolvedValue(true);
+
+      // call getPkAndVerifySignature with valid args
+      const verified = await signer.callGetPkAndVerifySignature(
+        'msg',
+        'signature',
+        'chainCode',
+        undefined,
+      );
+
+      expect(mockedGetPk).toHaveBeenCalledTimes(1);
+      expect(mockedGetPk).toHaveBeenCalledWith({
+        chainCode: 'chainCode',
+        derivationPath: [],
+      });
+      expect(mockedVerify).toHaveBeenCalledTimes(1);
+      expect(mockedVerify).toHaveBeenCalledWith('msg', 'signature', 'pk');
+      expect(verified).toBe(true);
+    });
+
+    /**
+     * @target TssSigner.getPkAndVerifySignature should return false when verify fails
+     * @dependencies
+     * @scenario
+     * - mock getPk
+     * - mock verify to return false
+     * - call getPkAndVerifySignature using invalid signature
+     * @expected
+     * - getPk should have been called with correct PublicKeyID
+     * - verify should have been called with message, signature and public key
+     * - getPkAndVerifySignature should have returned false
+     */
+    it('should return false when verify fails', async () => {
+      // mock getPk
+      const mockedGetPk = vi
+        .spyOn(signer as any, 'getPk')
+        .mockResolvedValue('pk');
+
+      // mock verify to return false
+      const mockedVerify = vi.spyOn(signer, 'verify').mockResolvedValue(false);
+
+      // call getPkAndVerifySignature using invalid signature
+      const verified = await signer.callGetPkAndVerifySignature(
+        'msg',
+        'signature',
+        'chainCode',
+        undefined,
+      );
+
+      expect(mockedGetPk).toHaveBeenCalledTimes(1);
+      expect(mockedGetPk).toHaveBeenCalledWith({
+        chainCode: 'chainCode',
+        derivationPath: [],
+      });
+      expect(mockedVerify).toHaveBeenCalledTimes(1);
+      expect(mockedVerify).toHaveBeenCalledWith('msg', 'signature', 'pk');
+      expect(verified).toBe(false);
     });
   });
 });

@@ -2,6 +2,7 @@ import {
   PendingSign,
   Sign,
   SignApprovePayload,
+  SignCachedPayload,
   SignRequestPayload,
   SignResult,
   SignStartPayload,
@@ -16,9 +17,22 @@ export class TestTssSigner extends TssSigner {
   getSigns = () => this.signs as Array<Sign>;
 
   /**
+   * get list of signatures in current object's cache
+   */
+  getSignCache = () => this.signCache as Record<string, SignResult>;
+
+  /**
    * get list of pending signs in current object
    */
   getPendingSigns = () => this.pendingSigns as Array<PendingSign>;
+
+  /**
+   * calling protected function addSignToCache
+   * @param message
+   * @param signResult
+   */
+  callAddSignToCache = (message: string, signResult: SignResult) =>
+    this.addSignToCache(message, signResult);
 
   /**
    * calling protected function getUnknownGuards
@@ -39,6 +53,12 @@ export class TestTssSigner extends TssSigner {
    * @param msg
    */
   mockedGetSign = (msg: string) => this.getSign(msg);
+
+  /**
+   * calls protected function removeSign
+   * @param msg
+   */
+  callRemoveSign = (msg: string) => this.removeSign(msg);
 
   /**
    * calling protected function isNoWorkTime
@@ -101,6 +121,14 @@ export class TestTssSigner extends TssSigner {
   ) => this.handleApproveMessage(payload, sender, guardIndex, signature);
 
   /**
+   * calling protected function handleSignCachedMessage
+   * @param payload
+   * @param sender
+   */
+  callHandleSignCachedMessage = (payload: SignCachedPayload, sender: string) =>
+    this.handleSignCachedMessage(payload, sender);
+
+  /**
    * calling protected function handleStartMessage
    * @param payload
    * @param timestamp
@@ -135,6 +163,33 @@ export class TestTssSigner extends TssSigner {
   ) => this.sign(msg, callback, chainCode, derivationPath);
 
   /**
+   * calls verify
+   * @param message
+   * @param signature
+   * @param signerPublicKey
+   */
+  verify = async (
+    message: string,
+    signature: string,
+    signerPublicKey: string,
+  ) => true;
+
+  /**
+   * calls protected function getPkAndVerifySignature
+   * @param message
+   * @param signature
+   * @param chainCode
+   * @param derivationPath
+   */
+  callGetPkAndVerifySignature = async (
+    message: string,
+    signature: string,
+    chainCode: string,
+    derivationPath?: number[],
+  ) =>
+    this.getPkAndVerifySignature(message, signature, chainCode, derivationPath);
+
+  /**
    * handles signing data callback in case of successful sign
    * @param sign
    * @param signature
@@ -151,6 +206,18 @@ export class TestTssSigner extends TssSigner {
       throw Error('signature is required when sign is successful');
     }
   };
+
+  /**
+   * calls protected function wrappedHandleSuccessfulSign
+   * @param sign
+   * @param signature
+   * @param signatureRecovery
+   */
+  callWrappedHandleSuccessfulSign = async (
+    sign: Sign,
+    signature?: string,
+    signatureRecovery?: string,
+  ) => this.wrappedHandleSuccessfulSign(sign, signature, signatureRecovery);
 
   /**
    * sign message and return promise
