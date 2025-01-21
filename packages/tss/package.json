@@ -11,7 +11,7 @@
     "lint": "eslint --fix . && npm run prettify",
     "build": "tsc --build tsconfig.build.json",
     "type-check": "tsc --noEmit",
-    "test": "NODE_OPTIONS=--loader=extensionless vitest",
+    "test": "NODE_OPTIONS='--import tsx' vitest",
     "coverage": "npm run test -- --coverage --run",
     "release": "npm run test -- --run && npm run build && npm publish --access public"
   },
@@ -28,8 +28,8 @@
     "@vitest/coverage-istanbul": "^1.2.2",
     "eslint": "^8.56.0",
     "eslint-config-prettier": "^9.1.0",
-    "extensionless": "^1.9.6",
     "prettier": "^2.8.7",
+    "tsx": "^4.19.2",
     "typescript": "^5.3.3",
     "vitest": "^1.2.2"
   },
