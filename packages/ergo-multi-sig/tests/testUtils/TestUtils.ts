@@ -36,8 +36,8 @@ class TestUtils {
       getPeerId: () => Promise.resolve(testPubs[secretInd]),
     });
     guardDetection.activeGuards = async () => {
-      return pubKeys.map((pk) => {
-        return { peerId: pk, publicKey: pk };
+      return pubKeys.map((pk, index) => {
+        return { peerId: pk, publicKey: pk, index: index };
       });
     };
 

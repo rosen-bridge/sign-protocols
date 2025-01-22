@@ -5,6 +5,7 @@ import { randomBytes } from '@noble/hashes/utils';
 export interface ActiveGuard {
   peerId: string;
   publicKey: string;
+  index: number;
 }
 
 export interface GuardDetectionConfig {
@@ -24,6 +25,7 @@ export interface GuardInfo {
   lastUpdate: number; // timestamp
   publicKey: string;
   callback: Array<(value: boolean) => unknown>;
+  index: number;
 }
 
 export class Nonce {
