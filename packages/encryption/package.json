@@ -1,6 +1,6 @@
 {
   "name": "@rosen-bridge/encryption",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "unify encryption interface",
   "repository": "https://github.com/rosen-bridge/sign-protocols",
   "license": "GPL-3.0",

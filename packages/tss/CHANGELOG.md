@@ -1,5 +1,16 @@
 # @rosen-bridge/tss
 
+## 4.1.1
+
+### Patch Changes
+
+- Remove unused packages and update dependencies
+
+- Updated dependencies
+  - @rosen-bridge/communication@1.0.1
+  - @rosen-bridge/detection@1.0.1
+  - @rosen-bridge/encryption@0.1.1
+
 ## 4.1.0
 
 ### Minor Changes

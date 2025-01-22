@@ -1,6 +1,6 @@
 {
   "name": "@rosen-bridge/detection",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "find available endpoints in private network",
   "repository": "https://github.com/rosen-bridge/sign-protocols",
   "license": "GPL-3.0",
@@ -34,8 +34,8 @@
   },
   "dependencies": {
     "@rosen-bridge/abstract-logger": "^2.0.1",
-    "@rosen-bridge/communication": "^1.0.0",
-    "@rosen-bridge/encryption": "^0.1.0"
+    "@rosen-bridge/communication": "^1.0.1",
+    "@rosen-bridge/encryption": "^0.1.1"
   },
   "engines": {
     "node": ">=20.11.0"
