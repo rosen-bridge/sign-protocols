@@ -49,12 +49,13 @@ export class GuardDetection extends Communicator {
       config.activeTimeoutSeconds || guardActiveTimeoutDefault;
     this.heartbeatTimeout =
       config.heartbeatTimeoutSeconds || guardHeartbeatTimeoutDefault;
-    this.guardsInfo = config.guardsPublicKey.map((item) => ({
+    this.guardsInfo = config.guardsPublicKey.map((item, index) => ({
       peerId: '',
       nonce: [],
       lastUpdate: 0,
       publicKey: item,
       callback: [],
+      index: index,
     }));
     this.getPeerId = config.getPeerId;
   }
@@ -324,6 +325,7 @@ export class GuardDetection extends Communicator {
     const myActiveGuard: ActiveGuard = {
       publicKey: await this.messageEnc.getPk(),
       peerId: await this.getPeerId(),
+      index: this.index,
     };
     return [
       ...this.guardsInfo
@@ -331,6 +333,7 @@ export class GuardDetection extends Communicator {
         .map((item) => ({
           peerId: item.peerId,
           publicKey: item.publicKey,
+          index: item.index,
         })),
       myActiveGuard,
     ].sort((item1, item2) => item1.publicKey.localeCompare(item2.publicKey));
@@ -401,12 +404,13 @@ export class GuardDetection extends Communicator {
    */
   changePks = async (newPks: Array<string>) => {
     await super.changePks(newPks);
-    this.guardsInfo = newPks.map((item) => ({
+    this.guardsInfo = newPks.map((item, index) => ({
       peerId: '',
       nonce: [],
       lastUpdate: 0,
       publicKey: item,
       callback: [],
+      index: index,
     }));
     await this.update();
   };
