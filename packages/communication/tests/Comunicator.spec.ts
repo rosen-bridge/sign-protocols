@@ -3,28 +3,74 @@ import { EdDSA } from '@rosen-bridge/encryption';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 describe('Communicator', () => {
-  let communicator: TestCommunicator;
-  let mockSubmit = vi.fn();
   let guardMessageEncs: Array<EdDSA>;
+  let guardPks: Array<string>;
   const payload = { foo: 'bar' };
 
   beforeEach(async () => {
     guardMessageEncs = [];
-    const guardPks: Array<string> = [];
+    guardPks = [];
     for (let index = 0; index < 10; index++) {
       const sk = new EdDSA(await EdDSA.randomKey());
       guardMessageEncs.push(sk);
       guardPks.push(await sk.getPk());
     }
-    mockSubmit = vi.fn();
-    communicator = new TestCommunicator(
-      guardMessageEncs[1],
-      mockSubmit,
-      guardPks,
-    );
+  });
+
+  describe('getIndex', () => {
+    const mockSubmit = vi.fn();
+
+    /**
+     * @target Communicator.getIndex should return exception when pk of guard doesn't exist between guardPks
+     * @dependencies
+     * @scenario
+     * - override current guard message encryption with wrong
+     * - create communicator
+     * - call getIndex
+     * @expected
+     * - must throw Error
+     */
+    it("should return exception when pk of guard doesn't exist between guardPks", async () => {
+      guardMessageEncs[1] = new EdDSA(await EdDSA.randomKey());
+      const communicator = new TestCommunicator(
+        guardMessageEncs[1],
+        mockSubmit,
+        guardPks,
+      );
+      expect(communicator.mockedGetIndex()).rejects.toThrow(Error);
+    });
+
+    /**
+     * @target Communicator.getIndex should return correct index 1
+     * @dependencies
+     * @scenario
+     * - create communicator and assign guardMessageEnc with index 1 as current guard
+     * - call getIndex
+     * @expected
+     * - should return correct index 1
+     */
+    it('should return correct index', async () => {
+      const communicator = new TestCommunicator(
+        guardMessageEncs[1],
+        mockSubmit,
+        guardPks,
+      );
+      expect(communicator.mockedGetIndex()).resolves.toEqual(1);
+    });
   });
 
   describe('getDate', () => {
+    let communicator: TestCommunicator;
+
+    beforeEach(async () => {
+      const mockSubmit = vi.fn();
+      communicator = new TestCommunicator(
+        guardMessageEncs[1],
+        mockSubmit,
+        guardPks,
+      );
+    });
+
     /**
      * @target Communicator.sendMessage should return current timestamp rounded to seconds
      * @dependencies
@@ -43,6 +89,18 @@ describe('Communicator', () => {
   });
 
   describe('sendMessage', () => {
+    let communicator: TestCommunicator;
+    let mockSubmit = vi.fn();
+
+    beforeEach(async () => {
+      mockSubmit = vi.fn();
+      communicator = new TestCommunicator(
+        guardMessageEncs[1],
+        mockSubmit,
+        guardPks,
+      );
+    });
+
     /**
      * @target Communicator.sendMessage should call submit message
      * @dependencies
@@ -76,6 +134,17 @@ describe('Communicator', () => {
   });
 
   describe('handleMessage', () => {
+    let communicator: TestCommunicator;
+
+    beforeEach(async () => {
+      const mockSubmit = vi.fn();
+      communicator = new TestCommunicator(
+        guardMessageEncs[1],
+        mockSubmit,
+        guardPks,
+      );
+    });
+
     /**
      * @target Communicator.handleMessage should pass arguments to process message function when sign is valid
      * @dependencies

@@ -22,5 +22,7 @@ export class TestCommunicator extends Communicator {
 
   processMessage = vi.fn();
 
+  mockedGetIndex = async () => await this.getIndex();
+
   mockedGetDate = () => this.getDate();
 }

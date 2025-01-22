@@ -42,6 +42,8 @@ export abstract class Communicator {
     if (this.index === -1) {
       const pk = await this.messageEnc.getPk();
       this.index = this.guardPks.indexOf(pk);
+      if (this.index == -1)
+        throw Error(`Public key ${pk} not found among the listed guardPks`);
     }
     return this.index;
   };
