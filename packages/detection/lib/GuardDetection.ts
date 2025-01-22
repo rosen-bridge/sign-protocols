@@ -325,7 +325,7 @@ export class GuardDetection extends Communicator {
     const myActiveGuard: ActiveGuard = {
       publicKey: await this.messageEnc.getPk(),
       peerId: await this.getPeerId(),
-      index: this.index,
+      index: await this.getIndex(),
     };
     return [
       ...this.guardsInfo
