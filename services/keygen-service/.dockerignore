@@ -1,0 +1,14 @@
+node_modules
+.nyc_output
+coverage
+dir
+build
+dist
+logs
+tests
+docker*
+Dockerfile
+.dockerignore
+.env
+README.md
+peer-dialer*.json

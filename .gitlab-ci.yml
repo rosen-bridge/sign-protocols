@@ -1,46 +1,14 @@
-image: golang:1.18
-
 stages:
-  - prepare_go
-  - lint
-  - build
+  - triggers
 
-variables:
-  GOPATH: $CI_PROJECT_DIR/.go
+run_go_ci:
+  stage: triggers
+  trigger:
+    include: .gitlab/go-ci.yml
+    strategy: depend
 
-preparing:
-  stage: prepare_go
-  cache:
-    key: $CI_COMMIT_REF_NAME
-    policy: push
-    paths:
-      - $CI_PROJECT_DIR/.go
-  script:
-    - echo "prepare_go"
-    - go env -w GO111MODULE=on
-    - go env -w GOPROXY="https://goproxy.io,direct"
-    - go install honnef.co/go/tools/cmd/staticcheck@2022.1.3
-
-lint:
-  stage: lint
-  cache:
-    key: $CI_COMMIT_REF_NAME
-    policy: pull
-    paths:
-      - $CI_PROJECT_DIR/.go
-  script:
-    - go vet .
-    - $(go env GOPATH)/bin/staticcheck .
-
-build:
-  stage: build
-  cache:
-    key: $CI_COMMIT_REF_NAME
-    policy: pull
-    paths:
-      - $CI_PROJECT_DIR/.go
-  script:
-    - CGO_ENABLED=0 go build -trimpath -o bin/rosenTss
-  artifacts:
-    paths:
-      - bin/
+run_ts_ci:
+  stage: triggers
+  trigger:
+    include: .gitlab/ts-ci.yml
+    strategy: depend

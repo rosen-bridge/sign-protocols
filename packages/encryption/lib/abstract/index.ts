@@ -1,0 +1,1 @@
+export { EncryptionHandler } from './EncryptionHandler';

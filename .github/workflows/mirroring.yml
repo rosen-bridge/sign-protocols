@@ -3,10 +3,10 @@ name: Mirroring
 on:
   push:
     branches:
-        - master
-        - dev
+      - master
+      - dev
     tags:
-        - '*'
+      - '*'
 
 jobs:
   git-sync:

@@ -1,0 +1,60 @@
+name: Release TSS API
+
+on:
+  push:
+    tags:
+      - tss-api-*
+
+jobs:
+  build:
+    name: Build tss-api
+    permissions: write-all
+    strategy:
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+        go: [1.18.0]
+        include:
+          - os: macos-latest
+            platform: macOS
+          - os: ubuntu-latest
+            platform: linux
+          - os: windows-latest
+            platform: windows
+            extension: '.exe'
+    defaults:
+      run:
+        shell: bash
+        working-directory: ./services/tss-api
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout Current Branch
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+
+      - name: Setup GoLang
+        uses: actions/setup-go@v2
+        with:
+          go-version: ${{ matrix.go }}
+
+      - name: Run build and prepare target files
+        id: build-version
+        run: |
+          match_version=$(echo "${{ github.ref_name }}" | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+')
+          echo "appVersion=${match_version}" >> $GITHUB_OUTPUT
+          CGO_ENABLED=0 go build -trimpath -o bin/rosenTss-${{ matrix.platform }}-${match_version}${{ matrix.extension }}
+          mkdir conf
+          mv conf.env.sample conf/conf.env
+
+      - name: Prepare Release File
+        run: |
+          7z a rosenTss-${{ matrix.platform }}-${{ steps.build-version.outputs.appVersion }}.zip ./bin/rosenTss-${{ matrix.platform }}-${{ steps.build-version.outputs.appVersion }}${{ matrix.extension }} ./conf
+
+      - name: Upload Release File
+        uses: softprops/action-gh-release@v1
+        with:
+          files: ./services/tss-api/rosenTss*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
