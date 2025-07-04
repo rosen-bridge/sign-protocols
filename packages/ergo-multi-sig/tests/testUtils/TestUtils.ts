@@ -27,21 +27,23 @@ class TestUtils {
       return mockedErgoStateContext;
     });
     const pubKeys = pks ? pks : testPubs;
+    const commPks = [...pubKeys].reverse();
+    const commSecrets = [...testSecrets].reverse();
     const secretInd = testSecrets.indexOf(secret);
-    const ecdsaMessageEnc = new ECDSA(testSecrets[secretInd]);
+    const ecdsaMessageEnc = new ECDSA(commSecrets[secretInd]);
     const guardDetection = new GuardDetection({
-      guardsPublicKey: pubKeys,
+      guardsPublicKey: commPks,
       messageEnc: ecdsaMessageEnc,
       submit: submit,
-      getPeerId: () => Promise.resolve(testPubs[secretInd]),
+      getPeerId: () => Promise.resolve(commPks[secretInd]),
     });
     guardDetection.activeGuards = async () => {
-      return pubKeys.map((pk, index) => {
+      return commPks.map((pk, index) => {
         return { peerId: pk, publicKey: pk, index: index };
       });
     };
 
-    return new MultiSigHandler({
+    const handler = new MultiSigHandler({
       multiSigUtilsInstance: multiSigUtilsInstance,
       messageEnc: ecdsaMessageEnc,
       secretHex: secret,
@@ -49,8 +51,11 @@ class TestUtils {
       multiSigFirstSignDelay: TestConfigs.multiSigFirstSignDelay,
       submit: submit,
       guardDetection: guardDetection,
-      guardsPk: pubKeys,
+      commGuardsPk: commPks,
     });
+
+    handler.handlePublicKeysChange(pubKeys);
+    return handler;
   };
 
   /**

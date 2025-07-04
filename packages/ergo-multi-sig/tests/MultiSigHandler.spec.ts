@@ -94,12 +94,13 @@ describe('MultiSigHandler', () => {
       );
       vi.setSystemTime(0);
       const turnInd = handler.getCurrentTurnInd();
+      const ids = [...testPubs].reverse();
       const id = await handler.getCurrentTurnId();
-      expect(id).toEqual(testPubs[turnInd]);
+      expect(id).toEqual(ids[turnInd]);
       vi.setSystemTime(turnTime);
       const turnInd2 = handler.getCurrentTurnInd();
       const id2 = await handler.getCurrentTurnId();
-      expect(id2).toEqual(testPubs[turnInd2]);
+      expect(id2).toEqual(ids[turnInd2]);
     });
   });
 
@@ -398,7 +399,7 @@ describe('MultiSigHandler', () => {
       );
       await TestUtils.addTx(handler, reduced, requiredSings, boxes, dataBoxes);
 
-      vi.setSystemTime(turnTime);
+      vi.setSystemTime(0);
       await handler.handleCommitment(
         '0',
         testCmt.payload as CommitmentPayload,
@@ -660,7 +661,7 @@ describe('MultiSigHandler', () => {
       expect(sender).toHaveBeenLastCalledWith(
         'generateCommitment',
         { txId: reduced.unsigned_tx().id().to_str() },
-        testPubs,
+        [...testPubs].reverse(),
         0,
       );
     });
@@ -697,7 +698,7 @@ describe('MultiSigHandler', () => {
       expect(sender).toHaveBeenLastCalledWith(
         'generateCommitment',
         { txId: reduced.unsigned_tx().id().to_str() },
-        testPubs,
+        [...testPubs].reverse(),
         0,
       );
     });

@@ -28,22 +28,26 @@ export class MultiSigHandler extends Communicator {
   private guardDetection: GuardDetection;
   private publicKey?: string;
   private guardsPk: Array<string>;
+  private commGuardsPk: Array<string>;
 
   constructor(config: ErgoMultiSigConfig) {
     super(
       config.logger ? config.logger : new DummyLogger(),
       config.messageEnc,
       config.submit,
-      config.guardsPk,
+      config.commGuardsPk,
     );
 
     this.logger = config.logger ? config.logger : new DummyLogger();
     this.transactions = new Map<string, TxQueued>();
-    this.secret = Buffer.from(config.secretHex, 'hex');
+    this.secret = Uint8Array.from(Buffer.from(config.secretHex, 'hex'));
     this.txSignTimeout = config.txSignTimeout;
     this.multiSigUtilsInstance = config.multiSigUtilsInstance;
-    this.guardsPk = config.guardsPk;
+    this.guardsPk = [];
+    this.commGuardsPk = config.commGuardsPk;
     this.guardDetection = config.guardDetection;
+
+    // Ergo keys will be set later via handlePublicKeysChange()
   }
 
   /**
@@ -58,9 +62,12 @@ export class MultiSigHandler extends Communicator {
    */
   peersWithIds = async (): Promise<Signer[]> => {
     const activeGuards = await this.guardDetection.activeGuards();
-    return this.guardsPk.map((pub) => {
-      const guard = activeGuards.find((guard) => guard.publicKey === pub);
-      return { pub, id: guard?.peerId };
+    const commPkToPeerId: Record<string, string> = {};
+    activeGuards.forEach((g) => (commPkToPeerId[g.publicKey] = g.peerId));
+
+    return this.guardsPk.map((ergoPk, index) => {
+      const commPk = this.commGuardsPk[index];
+      return { pub: ergoPk, id: commPkToPeerId[commPk] };
     });
   };
 
@@ -69,7 +76,9 @@ export class MultiSigHandler extends Communicator {
    */
   public getCurrentTurnInd = (): number => {
     // every turnTime the turn changes to the next guard
-    return Math.floor(new Date().getTime() / turnTime) % this.peers().length;
+    return (
+      Math.floor(new Date().getTime() / turnTime) % this.commGuardsPk.length
+    );
   };
 
   /**
@@ -78,10 +87,9 @@ export class MultiSigHandler extends Communicator {
   public getCurrentTurnId = async (): Promise<string | undefined> => {
     try {
       const activeGuards = await this.guardDetection.activeGuards();
-      const currentTurnPk = this.peers()[this.getCurrentTurnInd()].pub;
-      return activeGuards.filter(
-        (guard: ActiveGuard) => guard.publicKey === currentTurnPk,
-      )[0].peerId;
+      const commPk = this.commGuardsPk[this.getCurrentTurnInd()];
+      const guard = activeGuards.find((g) => g.publicKey === commPk);
+      return guard?.peerId;
     } catch (e) {
       return undefined;
     }
@@ -91,7 +99,8 @@ export class MultiSigHandler extends Communicator {
    * checks if it's this peer's turn to sign
    */
   public isMyTurn = async (): Promise<boolean> => {
-    return (await this.getIndex()) === this.getCurrentTurnInd();
+    const myCommIndex = await this.getIndex();
+    return myCommIndex === this.getCurrentTurnInd();
   };
 
   /**
@@ -270,7 +279,12 @@ export class MultiSigHandler extends Communicator {
     }
 
     if (payload.txId) {
-      const pub = this.peers()[index].pub;
+      const pub = this.ergoPkByCommIndex(index);
+      if (!pub) {
+        this.logger.error(`Failed to handle commitment: ${pub}`);
+        return;
+      }
+
       const { transaction, release } = await this.getQueuedTransaction(
         payload.txId,
       );
@@ -526,7 +540,12 @@ export class MultiSigHandler extends Communicator {
       this.logger.debug(
         `Received proof from [${sender}] for tx [${payload.txId}]...`,
       );
-      const pub = this.peers()[index].pub;
+      const pub = this.ergoPkByCommIndex(index);
+      if (!pub) {
+        this.logger.error(`Failed to handle sign: ${pub}`);
+        return;
+      }
+
       transaction.signs[pub] = payload.proof;
 
       if (Object.keys(transaction.signs).length >= transaction.requiredSigner) {
@@ -598,7 +617,7 @@ export class MultiSigHandler extends Communicator {
   handleSignedTx = async (txBytes: string): Promise<void> => {
     try {
       const tx = wasm.Transaction.sigma_parse_bytes(
-        Buffer.from(txBytes, 'base64'),
+        Uint8Array.from(Buffer.from(txBytes, 'base64')),
       );
       const { transaction, release } = await this.getQueuedTransaction(
         tx.id().to_str(),
@@ -757,5 +776,38 @@ export class MultiSigHandler extends Communicator {
         break;
       }
     }
+  };
+
+  /**
+   * Allows setting (or updating) the Ergo – blockchain – public keys after
+   * construction time. Re-builds the key maps so that subsequent logic can
+   * resolve peers correctly.
+   */
+  public handlePublicKeysChange = (ergoPks: Array<string>): void => {
+    this.guardsPk = [...ergoPks];
+  };
+
+  /**
+   * Helper that converts a communication-index (index inside `commGuardsPk`)
+   * to the corresponding Ergo public key, if any.
+   */
+  private commIndexToErgoPk = (index: number): string | undefined => {
+    return this.guardsPk[index];
+  };
+
+  /**
+   * Returns the Ergo public key that corresponds to a given communication
+   * index. Throws an error if no mapping exists - this indicates a programming
+   * error where Ergo keys haven't been properly set.
+   */
+  private ergoPkByCommIndex = (index: number): string | undefined => {
+    const pk = this.commIndexToErgoPk(index);
+    if (!pk) {
+      this.logger.error(
+        `Could not resolve Ergo public key for communication index ${index}. Make sure setErgoGuardPks() is called.`,
+      );
+      return undefined;
+    }
+    return pk;
   };
 }

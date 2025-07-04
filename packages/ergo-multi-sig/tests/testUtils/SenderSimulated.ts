@@ -11,7 +11,9 @@ export class SenderSimulated {
   changeHandlers = async (handlers: Array<MultiSigHandler>) => {
     handlers.forEach((handler) => {
       const pk = handler.getPk();
-      this.idToHandler[pk] = handler;
+      const ind = testPubs.indexOf(pk);
+      const id = testPubs[testPubs.length - 1 - ind];
+      this.idToHandler[id] = handler;
     });
   };
 
@@ -21,7 +23,8 @@ export class SenderSimulated {
    * @param peers peers to send the message
    */
   simulatedSender = async (msg: string, peers: Array<string>) => {
-    let toSend = testPubs;
+    const commPks = [...testPubs].reverse();
+    let toSend = commPks;
     if (peers.length > 0) {
       toSend = peers;
     }
@@ -30,7 +33,7 @@ export class SenderSimulated {
         const handler = this.idToHandler[id];
         const msgJson = JSON.parse(msg);
         if (handler) {
-          return handler.handleMessage(msg, testPubs[msgJson.index]);
+          return handler.handleMessage(msg, commPks[msgJson.index]);
         }
       }),
     );
