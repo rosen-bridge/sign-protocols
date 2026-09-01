@@ -1,7 +1,8 @@
 import './bootstrap';
+
+import Configs from './configs/configs';
 import { initApiServer } from './jobs/apiServer';
-import Configs from './configs/Configs';
-import Tss from './service/Tss';
+import Tss from './service/tss';
 
 const initKeygen = async () => {
   // initialize express Apis

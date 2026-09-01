@@ -1,1 +1,1 @@
-export { EncryptionHandler } from './EncryptionHandler';
+export { EncryptionHandler } from './encryptionHandler';

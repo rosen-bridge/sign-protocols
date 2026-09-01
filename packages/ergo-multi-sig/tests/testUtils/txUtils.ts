@@ -23,6 +23,7 @@ import {
   UnsignedInputs,
   UnsignedTransaction,
 } from 'ergo-lib-wasm-nodejs';
+
 import { headers } from '../testData';
 
 type Asset = {

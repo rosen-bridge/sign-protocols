@@ -4,11 +4,13 @@ stages:
 run_go_ci:
   stage: triggers
   trigger:
-    include: .gitlab/go-ci.yml
-    strategy: depend
+    include:
+      - local: .gitlab/workflows/go-workflow.yml
+    strategy: mirror
 
 run_ts_ci:
   stage: triggers
   trigger:
-    include: .gitlab/ts-ci.yml
-    strategy: depend
+    include:
+      - local: .gitlab/workflows/ts-workflow.yml
+    strategy: mirror

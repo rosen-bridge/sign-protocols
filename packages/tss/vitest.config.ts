@@ -1,18 +1,5 @@
-import { defineConfig } from 'vitest/config';
+import { defineProject, mergeConfig } from 'vitest/config';
 
-export default defineConfig({
-  test: {
-    coverage: {
-      all: true,
-      provider: 'istanbul',
-      reporter: 'cobertura',
-    },
-    passWithNoTests: true,
-    poolOptions: {
-      threads: {
-        singleThread: true,
-      },
-    },
-    pool: 'forks',
-  },
-});
+import configShared from '../../vitest.shared';
+
+export default mergeConfig(configShared, defineProject({}));

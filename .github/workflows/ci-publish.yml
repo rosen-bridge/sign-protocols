@@ -1,0 +1,67 @@
+name: CI & Publish to npmjs
+
+on:
+  push:
+    branches: ['dev']
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  ci:
+    name: CI and Publish
+    runs-on: ubuntu-latest
+
+    env:
+      PUBLISH_PREFIX: ${{ vars.PUBLISH_PREFIX != '' && vars.PUBLISH_PREFIX || 'rosen-version:' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Setup npm ${{ vars.NPM_VERSION }}
+        run: npm i -g npm@${{ vars.NPM_VERSION }}
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build --workspace packages
+
+      - name: Knip
+        run: npx knip --dependencies
+
+      - name: Type Check
+        run: |
+          npm run type-check --workspace packages
+          npm run type-check --workspace services/keygen-service
+
+      - name: Lint
+        run: |
+          npm run lint:check --workspace packages
+          npm run lint:check --workspace services/keygen-service
+
+      - name: Test
+        run: npm run coverage --workspace packages
+
+      - name: changeset
+        run: |
+          git fetch origin dev
+          npx changeset status --since=origin/dev
+
+      - name: Package Release
+        if: ${{ startsWith(github.event.head_commit.message, env.PUBLISH_PREFIX) && github.ref == 'refs/heads/dev' }}
+        uses: rosen-bridge/operation/.github/actions/npm-publish-package@master
+        with:
+          type: 'release'
+          npm_token: ${{ secrets.NPM_TOKEN }}
+          discord_hook: ${{ secrets.DISCORD_HOOK }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          discord_announce: 'true'

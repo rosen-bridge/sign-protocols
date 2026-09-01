@@ -1,3 +1,3 @@
-export { MultiSigUtils } from './MultiSigUtils';
-export { MultiSigHandler } from './MultiSigHandler';
+export { MultiSigUtils } from './multiSigUtils';
+export { MultiSigHandler } from './multiSigHandler';
 export * from './types';

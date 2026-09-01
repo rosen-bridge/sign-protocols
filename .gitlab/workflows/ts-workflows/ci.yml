@@ -1,0 +1,26 @@
+image: $GITLAB_CI_IMAGE
+
+default:
+  interruptible: true
+
+workflow:
+  auto_cancel:
+    on_job_failure: all
+
+include:
+  - component: $CI_SERVER_FQDN/${CI_COMPONENT}
+
+    inputs:
+      cache_key: ${CI_COMMIT_REF_NAME}-ts
+      enable_knip: true
+      enable_lint: true
+      enable_test: true
+      enable_changeset: true
+      type_check_script:
+        - npm run type-check --workspace packages
+        - npm run type-check --workspace services/keygen-service
+      lint_script:
+        - npm run lint:check --workspace packages
+        - npm run lint:check --workspace services/keygen-service
+      test_script:
+        - npm run coverage --workspace packages

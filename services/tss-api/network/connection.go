@@ -6,9 +6,10 @@ import (
 	"fmt"
 	"net/http"
 
-	"go.uber.org/zap"
 	"rosen-bridge/tss-api/logger"
 	"rosen-bridge/tss-api/models"
+
+	"go.uber.org/zap"
 )
 
 type Connection interface {
@@ -26,12 +27,13 @@ type connect struct {
 	publishUrl      string
 	subscriptionUrl string
 	getPeerIDUrl    string
+	apiKey          string
 	Client          HTTPClient
 }
 
 var logging *zap.SugaredLogger
 
-func InitConnection(publishPath string, subscriptionPath string, guardUrl string, getPeerIDPath string) Connection {
+func InitConnection(publishPath string, subscriptionPath string, guardUrl string, getPeerIDPath string, apiKey string) Connection {
 	publishUrl := fmt.Sprintf("%s%s", guardUrl, publishPath)
 	subscriptionUrl := fmt.Sprintf("%s%s", guardUrl, subscriptionPath)
 	getPeerIDUrl := fmt.Sprintf("%s%s", guardUrl, getPeerIDPath)
@@ -40,6 +42,7 @@ func InitConnection(publishPath string, subscriptionPath string, guardUrl string
 		publishUrl:      publishUrl,
 		subscriptionUrl: subscriptionUrl,
 		getPeerIDUrl:    getPeerIDUrl,
+		apiKey:          apiKey,
 		Client:          &http.Client{},
 	}
 
@@ -72,6 +75,7 @@ func (c *connect) Publish(msg models.GossipMessage) error {
 		return err
 	}
 	req.Header.Add("content-type", "application/json")
+	req.Header.Add("api-key", c.apiKey)
 	resp, err := c.Client.Do(req)
 	if err != nil {
 		logging.Errorf("error occurred in doing request: %+v", err)
@@ -107,9 +111,14 @@ func (c *connect) Publish(msg models.GossipMessage) error {
 //	Subscribe to p2p at first
 func (c *connect) Subscribe(projectUrl string) error {
 	logging.Infof("Subscribing to: %s", c.subscriptionUrl)
-	values := map[string]string{
-		"channel": "tss",
-		"url":     fmt.Sprintf("%s/message", projectUrl),
+
+	type message struct {
+		Channel string `json:"channel"`
+		Url     string `json:"url"`
+	}
+	values := message{
+		Channel: "tss",
+		Url:     fmt.Sprintf("%s/message", projectUrl),
 	}
 	jsonData, err := json.Marshal(values)
 	if err != nil {
@@ -123,6 +132,7 @@ func (c *connect) Subscribe(projectUrl string) error {
 		return err
 	}
 	req.Header.Add("content-type", "application/json")
+	req.Header.Add("api-key", c.apiKey)
 
 	resp, err := c.Client.Do(req)
 	if err != nil {
@@ -166,6 +176,7 @@ func (c *connect) CallBack(url string, data interface{}) error {
 		return err
 	}
 	req.Header.Add("content-type", "application/json")
+	req.Header.Add("api-key", c.apiKey)
 
 	resp, err := c.Client.Do(req)
 	if err != nil {
@@ -190,6 +201,7 @@ func (c *connect) GetPeerId() (string, error) {
 		return "", err
 	}
 	req.Header.Add("content-type", "application/json")
+	req.Header.Add("api-key", c.apiKey)
 
 	resp, err := c.Client.Do(req)
 	if err != nil {

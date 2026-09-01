@@ -1,8 +1,10 @@
 import * as wasm from 'ergo-lib-wasm-nodejs';
+
 import { AbstractLogger } from '@rosen-bridge/abstract-logger';
-import { MultiSigUtils } from './MultiSigUtils';
 import { GuardDetection } from '@rosen-bridge/detection';
 import { EncryptionHandler } from '@rosen-bridge/encryption';
+
+import { MultiSigUtils } from './multiSigUtils';
 
 interface Signer {
   id?: string;
@@ -47,6 +49,7 @@ interface TxQueued {
   commitments: Record<string, PublishedCommitment>;
   commitmentSigns: Record<string, string>;
   resolve?: (value: wasm.Transaction | PromiseLike<wasm.Transaction>) => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   reject?: (reason?: any) => void;
   createTime: number;
   requiredSigner: number;
@@ -112,9 +115,11 @@ interface ErgoMultiSigConfig {
   secretHex: string;
   txSignTimeout: number;
   multiSigFirstSignDelay?: number;
+  turnTime?: number;
   submit: (msg: string, peers: Array<string>) => unknown;
   guardDetection: GuardDetection;
-  guardsPk: Array<string>;
+  commGuardsPk: Array<string>;
+  ergoGuardPks?: Array<string>;
 }
 
 export {

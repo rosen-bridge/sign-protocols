@@ -1,14 +1,18 @@
 {
   "name": "tss-api",
-  "version": "2.1.0",
+  "private": true,
+  "version": "3.0.0",
   "description": "a service for Threshold Signature Scheme, for ECDSA and EDDSA",
-  "repository": "",
-  "license": "GPL-3.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rosen-bridge/sign-protocols.git"
+  },
+  "license": "MIT",
   "author": "Rosen Team",
   "type": "module",
   "scripts": {
+    "build": "CGO_ENABLED=0 go build -trimpath -o bin/rosenTss",
     "lint": "go fmt $(go list ./... | grep -v /vendor/) && $(go env GOPATH)/bin/staticcheck .",
-    "type-check": "go vet .",
-    "build": "CGO_ENABLED=0 go build -trimpath -o bin/rosenTss"
+    "type-check": "go vet ."
   }
 }

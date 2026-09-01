@@ -1,4 +1,4 @@
-export { TssSigner } from './tss/TssSigner';
-export { EcdsaSigner } from './tss/EcdsaSigner';
-export { EddsaSigner } from './tss/EddsaSigner';
+export { TssSigner } from './tss/tssSigner';
+export { EcdsaSigner } from './tss/ecdsaSigner';
+export { EddsaSigner } from './tss/eddsaSigner';
 export * from './types/signer';

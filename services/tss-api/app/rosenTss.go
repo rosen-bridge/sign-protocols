@@ -31,7 +31,6 @@ type rosenTss struct {
 	storage            storage.Storage
 	connection         network.Connection
 	Config             models.Config
-	trustKey           string
 	peerHome           string
 	P2pId              string
 }
@@ -39,7 +38,7 @@ type rosenTss struct {
 var logging *zap.SugaredLogger
 
 //	Constructor of an app
-func NewRosenTss(connection network.Connection, storage storage.Storage, config models.Config, trustKey string) _interface.RosenTss {
+func NewRosenTss(connection network.Connection, storage storage.Storage, config models.Config) _interface.RosenTss {
 	logging = logger.NewSugar("app")
 	return &rosenTss{
 		ChannelMap:         make(map[string]chan models.GossipMessage),
@@ -49,7 +48,6 @@ func NewRosenTss(connection network.Connection, storage storage.Storage, config 
 		ecdsaMetaData:      models.MetaData{},
 		storage:            storage,
 		connection:         connection,
-		trustKey:           trustKey,
 		Config:             config,
 	}
 }
@@ -183,10 +181,9 @@ func (r *rosenTss) StartNewSign(signMessage models.SignMessage) error {
 		if err != nil {
 			logging.Errorf("an error occurred in %s sign action, err: %+v", signMessage.Crypto, err)
 			data := models.SignData{
-				Message:  signMessage.Message,
-				Error:    err.Error(),
-				TrustKey: r.trustKey,
-				Status:   "fail",
+				Message: signMessage.Message,
+				Error:   err.Error(),
+				Status:  "fail",
 			}
 			r.errorCallBackCall(data, signMessage.CallBackUrl)
 		}
@@ -392,9 +389,4 @@ func (r *rosenTss) GetP2pId() string {
 //	get Config
 func (r *rosenTss) GetConfig() models.Config {
 	return r.Config
-}
-
-//	get TrustKey
-func (r *rosenTss) GetTrustKey() string {
-	return r.trustKey
 }

@@ -1,0 +1,47 @@
+name: snapshot publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: 'Pull Request Number'
+        required: true
+jobs:
+  snapshot-publish:
+    name: snapshot publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Checkout to PR
+        run: |
+          git fetch origin pull/${{ inputs.pr }}/head:pr-${{ inputs.pr }}
+          git checkout pr-${{ inputs.pr }}
+          git rev-parse --short=12 HEAD
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Setup npm ${{ vars.NPM_VERSION }}
+        run: npm i -g npm@${{ vars.NPM_VERSION }}
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build --workspace packages
+
+      - name: Publish snapshot package to npm
+        uses: rosen-bridge/operation/.github/actions/npm-publish-package@master
+        with:
+          type: 'snapshot-release'
+          npm_token: ${{ secrets.NPM_TOKEN }}
+          discord_hook: ${{ secrets.DISCORD_HOOK }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          discord_announce: 'true'

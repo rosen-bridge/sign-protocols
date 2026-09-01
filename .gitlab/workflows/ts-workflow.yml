@@ -1,0 +1,16 @@
+image: $GITLAB_CI_IMAGE
+
+default:
+  interruptible: true
+
+include:
+  - component: $CI_SERVER_FQDN/${ROOT_COMPONENT}
+
+    inputs:
+      cache_key: ${CI_COMMIT_REF_NAME}-ts
+      build_script:
+        - npm run build --workspace packages  
+      enable_ci_child: true
+      ci_child_path: .gitlab/workflows/ts-workflows/ci.yml
+      enable_snapshot_publish_child: true
+      snapshot_publish_child_path: .gitlab/workflows/ts-workflows/snapshot-publish.yml

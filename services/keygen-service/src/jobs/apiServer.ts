@@ -1,14 +1,16 @@
-import fastify, { FastifyInstance } from 'fastify';
+import rateLimit from '@fastify/rate-limit';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
+import fastify, { FastifyInstance } from 'fastify';
+
+import { DefaultLogger } from '@rosen-bridge/abstract-logger';
+
 import { keygenRoute } from '../api/keygen';
 import { p2pRoutes } from '../api/p2p';
-import Configs from '../configs/Configs';
-import WinstonLogger from '@rosen-bridge/winston-logger';
-import rateLimit from '@fastify/rate-limit';
+import Configs from '../configs/configs';
 
-const logger = WinstonLogger.getInstance().getLogger(import.meta.url);
+const logger = DefaultLogger.getInstance().child(import.meta.url);
 
 /**
  * initialize api server
@@ -52,7 +54,7 @@ const initApiServer = async () => {
     },
     staticCSP: true,
     transformStaticCSP: (header) => header,
-    transformSpecification: (swaggerObject, request, reply) => {
+    transformSpecification: (swaggerObject) => {
       return swaggerObject;
     },
     transformSpecificationClone: true,

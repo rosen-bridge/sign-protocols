@@ -5,4 +5,5 @@ export interface CommunicationMessage {
   publicKey: string;
   payload: JSON;
   index: number;
+  version: string;
 }

@@ -1,11 +1,13 @@
-import { apiCallBack } from '../communication/CallbackUtils';
-import Dialer from '../communication/Dialer';
-import Configs from '../configs/Configs';
 import { Type } from '@sinclair/typebox';
-import { FastifySeverInstance, MessageResponseSchema } from './schemas';
-import WinstonLogger from '@rosen-bridge/winston-logger';
 
-const logger = WinstonLogger.getInstance().getLogger(import.meta.url);
+import { DefaultLogger } from '@rosen-bridge/abstract-logger';
+
+import { apiCallBack } from '../communication/callbackUtils';
+import Dialer from '../communication/dialer';
+import Configs from '../configs/configs';
+import { FastifySeverInstance, MessageResponseSchema } from './schemas';
+
+const logger = DefaultLogger.getInstance().child(import.meta.url);
 
 /**
  * setup route for send p2p message
@@ -33,7 +35,7 @@ const sendRoute = (server: FastifySeverInstance, dialer: Dialer) => {
       const { channel, message, receiver } = request.body;
       dialer
         .sendMessage(channel, message, receiver)
-        .then((res) => {
+        .then(() => {
           reply.status(200).send({ message: 'ok' });
         })
         .catch((err) => {

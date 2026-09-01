@@ -1,6 +1,7 @@
+import { randomBytes } from '@noble/hashes/utils';
+
 import { AbstractLogger } from '@rosen-bridge/abstract-logger';
 import { EncryptionHandler } from '@rosen-bridge/encryption';
-import { randomBytes } from '@noble/hashes/utils';
 
 export interface ActiveGuard {
   peerId: string;

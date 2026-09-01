@@ -1,4 +1,7 @@
-import Configs from './configs/Configs';
+import { DefaultLogger } from '@rosen-bridge/abstract-logger';
 import WinstonLogger from '@rosen-bridge/winston-logger';
 
-await WinstonLogger.init(Configs.logs);
+import Configs from './configs/configs';
+
+const winston = WinstonLogger.createLogger(Configs.logs);
+DefaultLogger.init(winston);

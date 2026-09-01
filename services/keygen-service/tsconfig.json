@@ -14,7 +14,8 @@
     "skipLibCheck": true,
     "strict": true,
     "target": "esnext",
-    "outDir": "./dist"
+    "outDir": "./dist",
+    "types": ["node"]
   },
   "include": ["./**/*.ts"],
   "exclude": ["dist"]

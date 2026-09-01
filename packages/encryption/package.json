@@ -1,40 +1,40 @@
 {
   "name": "@rosen-bridge/encryption",
-  "version": "0.1.1",
+  "version": "1.0.1",
   "description": "unify encryption interface",
-  "repository": "https://github.com/rosen-bridge/sign-protocols",
-  "license": "GPL-3.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rosen-bridge/sign-protocols.git"
+  },
+  "license": "MIT",
   "author": "Rosen Team",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "CHANGELOG.md"
+  ],
   "scripts": {
     "build": "tsc --build tsconfig.build.json",
+    "clean": "rimraf dist && rimraf tsconfig.build.tsbuildinfo",
     "lint": "eslint --fix . && npm run prettify",
-    "prettify": "prettier --write . --ignore-path ./.gitignore",
-    "release": "npm run build && npm publish --access public",
+    "lint:check": "eslint . && npm run prettify:check",
+    "prettify": "prettier --write . --ignore-path ./../../.gitignore",
+    "prettify:check": "prettier --check . --ignore-path ./../../.gitignore",
+    "release": "npm run clean && npm run build && npm publish --access public",
     "type-check": "tsc --noEmit"
-  },
-  "files": [
-    "dist"
-  ],
-  "devDependencies": {
-    "@types/node": "^20.11.9",
-    "@types/secp256k1": "^4.0.3",
-    "@typescript-eslint/eslint-plugin": "^6.19.1",
-    "@typescript-eslint/parser": "^6.19.1",
-    "eslint": "^8.56.0",
-    "eslint-config-prettier": "^9.1.0",
-    "prettier": "^3.2.4",
-    "typescript": "^5.3.3"
   },
   "dependencies": {
     "@noble/ed25519": "^2.2.3",
     "@noble/hashes": "^1.7.1",
-    "@rosen-bridge/abstract-logger": "^2.0.1",
-    "secp256k1": "^4.0.3"
+    "secp256k1": "^5.0.1"
+  },
+  "devDependencies": {
+    "@types/secp256k1": "^4.0.7"
   },
   "engines": {
-    "node": ">=20.11.0"
+    "node": ">=22.18.0",
+    "npm": "11.6.2"
   }
 }

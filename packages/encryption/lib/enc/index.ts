@@ -1,2 +1,2 @@
-export { EdDSA } from './EdDSA';
-export { ECDSA } from './ECDSA';
+export { EdDSA } from './eddsa';
+export { ECDSA } from './ecdsa';

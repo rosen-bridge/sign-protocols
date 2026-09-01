@@ -1,0 +1,11 @@
+image: $GITLAB_CI_IMAGE
+
+default:
+  interruptible: true
+
+include:
+  - component: $CI_SERVER_FQDN/${SNAPSHOT_COMPONENT}
+
+    inputs:
+      cache_key: ${CI_COMMIT_REF_NAME}-ts
+      enable_announce: true

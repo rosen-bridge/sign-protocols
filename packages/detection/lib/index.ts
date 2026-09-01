@@ -1,2 +1,2 @@
-export { GuardDetection } from './GuardDetection';
+export { GuardDetection } from './guardDetection';
 export * from './interfaces/types';
