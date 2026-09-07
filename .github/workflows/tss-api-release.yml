@@ -10,8 +10,9 @@ jobs:
     name: Build tss-api
     permissions: write-all
     strategy:
+      fail-fast: false
       matrix:
-        os: [macos-latest, ubuntu-latest, windows-latest]
+        os: ${{ fromJSON(vars.OS_LIST || '["macos-latest", "ubuntu-latest", "windows-latest"]') }}
         go: [1.18.0]
         include:
           - os: macos-latest
@@ -30,14 +31,15 @@ jobs:
 
     steps:
       - name: Checkout Current Branch
-        uses: actions/checkout@v2
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Setup GoLang
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v7
         with:
           go-version: ${{ matrix.go }}
+          cache: false
 
       - name: Run build and prepare target files
         id: build-version
@@ -53,7 +55,7 @@ jobs:
           7z a rosenTss-${{ matrix.platform }}-${{ steps.build-version.outputs.appVersion }}.zip ./bin/rosenTss-${{ matrix.platform }}-${{ steps.build-version.outputs.appVersion }}${{ matrix.extension }} ./conf
 
       - name: Upload Release File
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v3
         with:
           files: ./services/tss-api/rosenTss*.zip
         env:
