@@ -1,5 +1,12 @@
 # @rosen-bridge/detection
 
+## 3.0.1
+
+### Patch Changes
+
+- Update dependencies
+  - @rosen-bridge/communication@3.0.1
+
 ## 3.0.0
 
 ### Major Changes

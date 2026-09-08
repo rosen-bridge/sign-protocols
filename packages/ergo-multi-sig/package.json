@@ -1,6 +1,6 @@
 {
   "name": "@rosen-bridge/ergo-multi-sig",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "description": "multi signature protocol for ergo network",
   "repository": {
     "type": "git",
@@ -29,8 +29,8 @@
   },
   "dependencies": {
     "@rosen-bridge/abstract-logger": "^4.0.0",
-    "@rosen-bridge/communication": "^3.0.0",
-    "@rosen-bridge/detection": "^3.0.0",
+    "@rosen-bridge/communication": "^3.0.1",
+    "@rosen-bridge/detection": "^3.0.1",
     "@rosen-bridge/encryption": "^1.0.1",
     "@rosen-bridge/semaphore": "^0.1.0",
     "ergo-lib-wasm-nodejs": "^0.24.1"

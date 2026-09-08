@@ -4,8 +4,8 @@
  * major component matches.
  * @param version
  */
-export const getVersionSections = (version: string) => {
-  const sections = version.split('.');
+export const getVersionSections = (version: string | undefined) => {
+  const sections = (version ?? '').split('.');
   return {
     major: sections[0],
     minor: sections[1] ?? '',
