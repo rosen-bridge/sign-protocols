@@ -5,7 +5,7 @@
  * @param version
  */
 export const getVersionSections = (version: string) => {
-  const sections = version.split('.');
+  const sections = (version ?? '').split('.');
   return {
     major: sections[0],
     minor: sections[1] ?? '',
