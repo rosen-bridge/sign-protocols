@@ -187,7 +187,7 @@ export abstract class Communicator {
           msg.payload,
           msg.timestamp,
           msg.publicKey,
-          msg.version,
+          msg.version ?? '',
         ),
         msg.sign,
         guardPk,
