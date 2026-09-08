@@ -1,6 +1,6 @@
 {
   "name": "@rosen-bridge/communication",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "description": "abstractly manage communication between endpoints",
   "repository": {
     "type": "git",

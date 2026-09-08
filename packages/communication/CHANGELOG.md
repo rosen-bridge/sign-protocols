@@ -1,5 +1,11 @@
 # @rosen-bridge/communication
 
+## 3.0.1
+
+### Patch Changes
+
+- Fix a bug where an error is thrown when version is undefined
+
 ## 3.0.0
 
 ### Major Changes
