@@ -49,7 +49,7 @@ describe('TssSigner', () => {
 
   describe('cleanup', () => {
     /**
-     * @target TssSigner.cleanup should remove timed out signs
+     * @target TssSigner.cleanup should remove timed out signs and call their callback
      * @dependencies
      * @scenario
      * - mock `Date.now` to return 1686286005068 ( a random timestamp )
@@ -57,20 +57,24 @@ describe('TssSigner', () => {
      * - call cleanup
      * @expected
      * - signs must be empty array
+     * - removed sign's callback must be called with falsy status and a timeout reason
      */
-    it('should remove timed out signs', async () => {
+    it('should remove timed out signs and call their callback', async () => {
       const signs = signer.getSigns();
+      const callback = vi.fn();
       signs.push({
         msg: 'random msg',
         signs: [],
         addedTime: Math.floor(currentTime / 1000) - 5 * 60 - 1,
-        callback: () => null,
+        callback,
         posted: false,
         chainCode: 'chainCode',
       });
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await (signer as any).cleanup();
       expect(signer.getSigns().length).toEqual(0);
+      expect(callback).toHaveBeenCalledTimes(1);
+      expect(callback).toHaveBeenCalledWith(false, 'Timed out');
     });
 
     /**

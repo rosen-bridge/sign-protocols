@@ -143,8 +143,17 @@ export abstract class TssSigner extends Communicator {
     const timeout = this.getDate() - this.timeout;
     const turn = this.getGuardTurn();
     const releaseSign = await this.signAccessMutex.acquire();
+    const timedOutSigns = this.signs.filter(
+      (sign) => sign.addedTime <= timeout,
+    );
     this.signs = this.signs.filter((sign) => sign.addedTime > timeout);
     releaseSign();
+    for (const sign of timedOutSigns) {
+      this.logger.warn(
+        `sign [${sign.msg}] timed out (posted: ${sign.posted}). notifying caller`,
+      );
+      sign.callback(false, 'Timed out');
+    }
     const releasePending = await this.pendingAccessMutex.acquire();
     this.pendingSigns = this.pendingSigns.filter(
       (pending) => pending.index === turn,
