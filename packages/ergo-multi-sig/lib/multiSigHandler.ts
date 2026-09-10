@@ -799,13 +799,9 @@ export class MultiSigHandler extends Communicator {
   public cleanup = (): void => {
     this.logger.info('Cleaning MultiSig queue');
     let cleanedTransactionCount = 0;
-    this.semaphore.acquire().then(async (release) => {
+    this.semaphore.acquire().then((release) => {
       try {
-        const myIndex = await this.getIndex();
         for (const [key, transaction] of Array.from(this.transactions)) {
-          const isCoordinatorUnset = transaction.coordinator === -1;
-          const isCoordinatorMine = transaction.coordinator === myIndex;
-          if (!isCoordinatorUnset && !isCoordinatorMine) continue;
           if (
             transaction.createTime <
             new Date().getTime() - this.txSignTimeout * 1000

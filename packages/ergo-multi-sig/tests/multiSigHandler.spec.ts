@@ -621,6 +621,41 @@ describe('MultiSigHandler', () => {
       );
       expect(transaction.boxes.length).toEqual(1);
     });
+
+    /**
+     * @target MultiSigHandler.cleanup should remove expired transactions
+     * coordinated by another guard
+     * @dependencies MultiSigHandlerInstance
+     * @scenario
+     * - Generate a MultiSigHandler instance
+     * - Call addTx with a test transaction, required signs, boxes, and dataBoxes
+     * - Set the transaction's coordinator to a different guard's index
+     * - Set system time past txSignTimeout
+     * - Call cleanup
+     * - Call getQueuedTransaction with the transaction ID
+     * @expected
+     * - The returned transaction should have boxes length equal to 0
+     */
+    it('should remove expired transactions coordinated by another guard', async () => {
+      const handler = await TestUtils.generateMultiSigHandlerInstance(
+        testSecrets[0],
+        vi.fn(),
+        testPubs,
+      );
+      vi.setSystemTime(0);
+      await TestUtils.addTx(handler, reduced, requiredSings, boxes, dataBoxes);
+      const txId = reduced.unsigned_tx().id().to_str();
+      const { transaction, release } = await handler.getQueuedTransaction(txId);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const myIndex = await (handler as any).getIndex();
+      transaction.coordinator = (myIndex + 1) % testPubs.length;
+      release();
+      vi.setSystemTime(10e6);
+      handler.cleanup();
+      const { transaction: transaction2 } =
+        await handler.getQueuedTransaction(txId);
+      expect(transaction2.boxes.length).toEqual(0);
+    });
   });
 
   /**
