@@ -26,6 +26,10 @@ export class MultiSigHandler extends Communicator {
   readonly contributionValidationVersion = 1;
   private readonly beforeContribution: ErgoMultiSigConfig['beforeContribution'];
   private readonly failedContributions = new WeakSet<TxQueued>();
+  private readonly pendingCommitments = new WeakMap<
+    TxQueued,
+    { coordinatorIndex: number | undefined; promise: Promise<void> }
+  >();
   /**
    * version of the ergo multi-sig protocol's message envelope and semantics,
    * tied to this package's own version
@@ -354,6 +358,31 @@ export class MultiSigHandler extends Communicator {
    * @param coordinatorIndex the index of the coordinator (undefined if self-initiated as coordinator)
    */
   generateCommitment = async (
+    txId: string,
+    coordinatorIndex?: number,
+  ): Promise<void> => {
+    const transaction = this.transactions.get(txId);
+    if (!this.beforeContribution || !transaction?.tx)
+      return this.generateCommitmentOnce(txId, coordinatorIndex);
+
+    const pending = this.pendingCommitments.get(transaction);
+    if (pending && pending.coordinatorIndex === coordinatorIndex)
+      return pending.promise;
+
+    // Duplicate requests must share the authorization and native secret write.
+    // Otherwise the first successful write makes the second snapshot stale.
+    const promise = this.generateCommitmentOnce(txId, coordinatorIndex);
+    const operation = { coordinatorIndex, promise };
+    this.pendingCommitments.set(transaction, operation);
+    try {
+      await promise;
+    } finally {
+      if (this.pendingCommitments.get(transaction) === operation)
+        this.pendingCommitments.delete(transaction);
+    }
+  };
+
+  private generateCommitmentOnce = async (
     txId: string,
     coordinatorIndex?: number,
   ): Promise<void> => {

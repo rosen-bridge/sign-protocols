@@ -173,6 +173,80 @@ describe('contribution validation', () => {
     await pending;
   });
 
+  it.each([undefined, 0])(
+    'coalesces overlapping requests for coordinator %s without rejecting the queued transaction',
+    async (coordinator) => {
+      const entered = Promise.withResolvers<void>();
+      const resume = Promise.withResolvers<void>();
+      const hook = vi.fn(async () => {
+        entered.resolve();
+        await resume.promise;
+      });
+      const f = await fixture(hook);
+      const first = f.handler.generateCommitment(txId, coordinator);
+      await entered.promise;
+      const second = f.handler.generateCommitment(txId, coordinator);
+      const results = Promise.allSettled([first, second]);
+      resume.resolve();
+      expect(await results).toEqual([
+        { status: 'fulfilled', value: undefined },
+        { status: 'fulfilled', value: undefined },
+      ]);
+      expect(hook).toHaveBeenCalledTimes(1);
+      expect(f.commitments).toHaveBeenCalledTimes(1);
+      expect(f.send).toHaveBeenCalledTimes(coordinator === undefined ? 0 : 1);
+      expect(f.reject).not.toHaveBeenCalled();
+
+      await f.handler.generateCommitment(txId, coordinator);
+      expect(hook).toHaveBeenCalledTimes(2);
+      expect(f.commitments).toHaveBeenCalledTimes(2);
+      expect(f.send).toHaveBeenCalledTimes(coordinator === undefined ? 0 : 2);
+      expect(f.reject).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['refusal', 'turn', 'coordinator'] as const)(
+    'keeps overlapping requests fail-closed on %s',
+    async (changed) => {
+      const entered = Promise.withResolvers<void>();
+      const resume = Promise.withResolvers<void>();
+      const hook = vi.fn(async () => {
+        entered.resolve();
+        await resume.promise;
+        if (changed === 'refusal') throw Error('source invalid');
+      });
+      const f = await fixture(hook);
+      const first = f.handler.generateCommitment(txId, 0);
+      await entered.promise;
+      const second = f.handler.generateCommitment(txId, 0);
+      const pending = [first, second];
+      if (changed === 'turn') vi.setSystemTime(turnTime * 1000);
+      if (changed === 'coordinator')
+        pending.push(f.handler.generateCommitment(txId, 1));
+      const results = Promise.allSettled(pending);
+      resume.resolve();
+      expect(await results).toEqual(
+        pending.map(() => ({
+          status: 'rejected',
+          reason: expect.objectContaining({
+            message:
+              changed === 'refusal'
+                ? 'source invalid'
+                : 'Contribution state changed',
+          }),
+        })),
+      );
+      const hookCalls = hook.mock.calls.length;
+      await expect(f.handler.generateCommitment(txId, 0)).rejects.toThrow(
+        'Contribution state changed',
+      );
+      expect(hook).toHaveBeenCalledTimes(hookCalls);
+      expect(f.commitments).not.toHaveBeenCalled();
+      expect(f.send).not.toHaveBeenCalled();
+      expect(f.reject).toHaveBeenCalled();
+    },
+  );
+
   it.each([
     'queue',
     'transaction',
