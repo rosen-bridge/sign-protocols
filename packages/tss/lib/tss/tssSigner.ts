@@ -270,8 +270,20 @@ export abstract class TssSigner extends Communicator {
     chainCode: string,
     derivationPath?: number[],
   ) => {
-    if (this.getSign(msg, true)) {
-      throw Error('already signing this message');
+    const signObject = this.getSign(msg, true);
+    if (signObject) {
+      this.logger.info(`Already signing message [${msg}]`);
+      const oldCallback = signObject.callback;
+      signObject.callback = (
+        status: boolean,
+        message?: string,
+        signature?: string,
+        signatureRecovery?: string,
+      ) => {
+        callback(status, message, signature, signatureRecovery);
+        oldCallback(status, message, signature, signatureRecovery);
+      };
+      return;
     }
 
     if (Object.hasOwn(this.signCache, msg)) {

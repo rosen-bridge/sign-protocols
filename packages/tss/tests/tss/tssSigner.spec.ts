@@ -508,6 +508,99 @@ describe('TssSigner', () => {
         currentTime,
       );
     });
+
+    /**
+     * @target TssSigner.sign should not throw and should not add a new
+     * entry to signs when message is already being signed
+     * @dependencies
+     * @scenario
+     * - call sign for a message
+     * - call sign again for the same message
+     * @expected
+     * - second call should resolve without throwing/rejecting
+     * - signs array should still contain only one entry for the message
+     */
+    it('should not throw and should not add a new entry to signs when message is already being signed', async () => {
+      await signer.callSign('msg', vi.fn(), 'chainCode');
+      await expect(
+        signer.callSign('msg', vi.fn(), 'chainCode'),
+      ).resolves.toBeUndefined();
+      expect(
+        signer.getSigns().filter((item) => item.msg === 'msg'),
+      ).toHaveLength(1);
+    });
+
+    /**
+     * @target TssSigner.sign should call both callbacks with the successful
+     * sign result when message is already being signed
+     * @dependencies
+     * @scenario
+     * - call sign for a message with a first callback
+     * - call sign again for the same message with a second callback
+     * - invoke the queued sign's callback with a successful result
+     * @expected
+     * - both callbacks should have been called with the successful result
+     */
+    it('should call both callbacks with the successful sign result when message is already being signed', async () => {
+      const cb1 = vi.fn();
+      const cb2 = vi.fn();
+      await signer.callSign('msg', cb1, 'chainCode');
+      await signer.callSign('msg', cb2, 'chainCode');
+
+      const sign = signer.mockedGetSign('msg')!;
+      sign.callback(true, undefined, 'signature', 'signatureRecovery');
+
+      expect(cb1).toHaveBeenCalledTimes(1);
+      expect(cb1).toHaveBeenCalledWith(
+        true,
+        undefined,
+        'signature',
+        'signatureRecovery',
+      );
+      expect(cb2).toHaveBeenCalledTimes(1);
+      expect(cb2).toHaveBeenCalledWith(
+        true,
+        undefined,
+        'signature',
+        'signatureRecovery',
+      );
+    });
+
+    /**
+     * @target TssSigner.sign should call both callbacks with the failed
+     * sign result when message is already being signed
+     * @dependencies
+     * @scenario
+     * - call sign for a message with a first callback
+     * - call sign again for the same message with a second callback
+     * - invoke the queued sign's callback with a failure result
+     * @expected
+     * - both callbacks should have been called with the failure result
+     */
+    it('should call both callbacks with the failed sign result when message is already being signed', async () => {
+      const cb1 = vi.fn();
+      const cb2 = vi.fn();
+      await signer.callSign('msg', cb1, 'chainCode');
+      await signer.callSign('msg', cb2, 'chainCode');
+
+      const sign = signer.mockedGetSign('msg')!;
+      sign.callback(false, 'sign failed');
+
+      expect(cb1).toHaveBeenCalledTimes(1);
+      expect(cb1).toHaveBeenCalledWith(
+        false,
+        'sign failed',
+        undefined,
+        undefined,
+      );
+      expect(cb2).toHaveBeenCalledTimes(1);
+      expect(cb2).toHaveBeenCalledWith(
+        false,
+        'sign failed',
+        undefined,
+        undefined,
+      );
+    });
   });
 
   describe('processMessage', () => {
