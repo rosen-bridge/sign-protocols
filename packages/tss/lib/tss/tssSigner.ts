@@ -149,7 +149,7 @@ export abstract class TssSigner extends Communicator {
     this.signs = this.signs.filter((sign) => sign.addedTime > timeout);
     releaseSign();
     for (const sign of timedOutSigns) {
-      this.logger.warn(
+      this.logger.debug(
         `sign [${sign.msg}] timed out (posted: ${sign.posted}). notifying caller`,
       );
       sign.callback(false, 'Timed out');
