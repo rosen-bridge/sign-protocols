@@ -1,3 +1,6 @@
+import { createHash, randomUUID } from 'node:crypto';
+import secp from 'secp256k1';
+
 import { DummyLogger } from '@rosen-bridge/abstract-logger';
 import { Communicator } from '@rosen-bridge/communication';
 import { GuardDetection, ActiveGuard } from '@rosen-bridge/detection';
@@ -13,6 +16,7 @@ import {
 } from '../const/const';
 import {
   approveMessage,
+  boundResultMessage,
   cachedMessage,
   getPkUrl,
   requestMessage,
@@ -34,6 +38,14 @@ import {
   SignStartPayload,
   StatusEnum,
   Threshold,
+  BoundSignProfile,
+  BoundSignOperation,
+  BoundSignStage,
+  BoundResultTransportCapability,
+  BoundSignTranscript,
+  BoundSignSelection,
+  BoundSignResultPayload,
+  PendingBoundResult,
 } from '../types/signer';
 
 export abstract class TssSigner extends Communicator {
@@ -64,6 +76,429 @@ export abstract class TssSigner extends Communicator {
   protected readonly shares: Array<string>;
   protected readonly signPerRoundLimit: number;
   protected readonly signCacheTTLSeconds: number;
+  private readonly boundProfiles = new WeakSet<BoundSignProfile>();
+
+  private isResultTransportProfile = (
+    profile: BoundSignProfile,
+  ): profile is BoundSignProfile & {
+    schema: 2;
+    resultTransport: BoundResultTransportCapability;
+  } =>
+    profile.schema === 2 &&
+    profile.resultTransport?.capability === 'bound-result-transport' &&
+    profile.resultTransport.version === 1;
+
+  private boundTranscript = (
+    profile: BoundSignProfile,
+  ): BoundSignTranscript => {
+    if (!this.isResultTransportProfile(profile))
+      throw Error('Bound result transport is not enabled');
+    return {
+      capability: profile.resultTransport.capability,
+      version: profile.resultTransport.version,
+      profileHash: profile.profileHash,
+    };
+  };
+
+  private hasExactKeys = (value: object, keys: string[]) =>
+    Object.keys(value).sort().join(',') === [...keys].sort().join(',');
+
+  private hasValidTranscript = (
+    sign: Sign,
+    transcript: BoundSignTranscript | undefined,
+  ) => {
+    const profile = sign.bound?.profile;
+    return Boolean(
+      profile &&
+        this.isResultTransportProfile(profile) &&
+        transcript &&
+        typeof transcript === 'object' &&
+        this.hasExactKeys(transcript, [
+          'capability',
+          'version',
+          'profileHash',
+        ]) &&
+        transcript.capability === profile.resultTransport.capability &&
+        transcript.version === profile.resultTransport.version &&
+        transcript.profileHash === profile.profileHash,
+    );
+  };
+
+  private withBoundTranscript = <
+    T extends SignRequestPayload | SignApprovePayload | SignStartPayload,
+  >(
+    sign: Sign,
+    payload: T,
+  ): T => {
+    if (!sign.bound || !this.isResultTransportProfile(sign.bound.profile))
+      return payload;
+    return {
+      ...payload,
+      bound: this.boundTranscript(sign.bound.profile),
+    };
+  };
+
+  private normalizedGuards = (guards: readonly ActiveGuard[]) =>
+    guards.map((guard) => ({
+      publicKey: guard.publicKey,
+      peerId: guard.peerId,
+      index: guard.index,
+    }));
+
+  private isExactRoster = (
+    profile: BoundSignProfile,
+    guards: readonly ActiveGuard[],
+  ) =>
+    guards.length === profile.guardPublicKeys.length &&
+    guards.every(
+      (guard, index) =>
+        guard.publicKey === profile.guardPublicKeys[index] &&
+        guard.index === index &&
+        typeof guard.peerId === 'string' &&
+        guard.peerId.length > 0,
+    ) &&
+    new Set(guards.map((guard) => guard.publicKey)).size === guards.length &&
+    new Set(guards.map((guard) => guard.peerId)).size === guards.length;
+
+  private profileOrderedDetectedRoster = (
+    profile: BoundSignProfile,
+    detected: readonly ActiveGuard[],
+  ): ActiveGuard[] | undefined => {
+    if (detected.length !== profile.guardPublicKeys.length) return undefined;
+    const byIndex = new Map<number, ActiveGuard>();
+    for (const guard of detected) {
+      if (
+        !Number.isInteger(guard.index) ||
+        guard.index < 0 ||
+        guard.index >= profile.guardPublicKeys.length ||
+        byIndex.has(guard.index) ||
+        guard.publicKey !== profile.guardPublicKeys[guard.index] ||
+        typeof guard.peerId !== 'string' ||
+        guard.peerId.length === 0
+      )
+        return undefined;
+      byIndex.set(
+        guard.index,
+        Object.freeze({
+          publicKey: guard.publicKey,
+          peerId: guard.peerId,
+          index: guard.index,
+        }),
+      );
+    }
+    const ordered = profile.guardPublicKeys.map(
+      (_, index) => byIndex.get(index)!,
+    );
+    return this.isExactRoster(profile, ordered) ? ordered : undefined;
+  };
+
+  private selectionHash = (
+    sign: Sign,
+    fullRoster: readonly ActiveGuard[],
+    selectedGuards: readonly ActiveGuard[],
+  ) =>
+    createHash('sha256')
+      .update(
+        JSON.stringify({
+          ...this.boundTranscript(sign.bound!.profile),
+          msg: sign.msg,
+          fullRoster: this.normalizedGuards(fullRoster),
+          selectedGuards: this.normalizedGuards(selectedGuards),
+        }),
+        'utf8',
+      )
+      .digest('hex');
+
+  private makeSelection = (
+    sign: Sign,
+    fullRoster: readonly ActiveGuard[],
+    selectedGuards: readonly ActiveGuard[],
+  ): BoundSignSelection =>
+    Object.freeze({
+      selectionHash: this.selectionHash(sign, fullRoster, selectedGuards),
+      fullRoster: Object.freeze(
+        this.normalizedGuards(fullRoster).map((guard) => Object.freeze(guard)),
+      ),
+      selectedGuards: Object.freeze(
+        this.normalizedGuards(selectedGuards).map((guard) =>
+          Object.freeze(guard),
+        ),
+      ),
+    });
+
+  private sameGuards = (
+    left: readonly ActiveGuard[],
+    right: readonly ActiveGuard[],
+  ) =>
+    JSON.stringify(this.normalizedGuards(left)) ===
+    JSON.stringify(this.normalizedGuards(right));
+
+  private installSelection = (
+    sign: Sign,
+    selection: BoundSignSelection,
+    myPk: string,
+  ) => {
+    if (
+      sign.boundSelection &&
+      (sign.boundSelection.selectionHash !== selection.selectionHash ||
+        !this.sameGuards(
+          sign.boundSelection.selectedGuards,
+          selection.selectedGuards,
+        ))
+    )
+      throw Error('Conflicting bound signing selection');
+    sign.boundSelection ??= selection;
+    if (!selection.selectedGuards.some((guard) => guard.publicKey === myPk)) {
+      sign.boundResultOnly = true;
+      sign.posted = true;
+    }
+  };
+
+  private failBoundSign = (sign: Sign, error: unknown) => {
+    if (!sign.bound || sign.boundSettled) return;
+    sign.boundPendingResults = undefined;
+    sign.boundFailed = true;
+    sign.posted = true;
+    sign.boundSettled = true;
+    sign.callback(
+      false,
+      error instanceof Error ? error.message : String(error),
+    );
+  };
+
+  private hasAcceptedBoundResult = (
+    sign: Sign,
+    payload: BoundSignResultPayload,
+  ) => {
+    if (!sign.boundResult) return false;
+    if (
+      sign.boundResult.signature !== payload.signature ||
+      sign.boundResult.signatureRecovery !== payload.signatureRecovery
+    )
+      throw Error('Conflicting bound signing result');
+    return true;
+  };
+
+  /** Returns only a result verified against this exact issued profile, never a signing cache hit. */
+  getBoundResult = (
+    message: string,
+    profile: BoundSignProfile,
+  ): SignResult | undefined => {
+    if (!this.boundProfiles.has(profile))
+      throw Error('Unknown bound signing profile');
+    const sign = this.getSign(message, true);
+    return sign?.bound?.profile === profile && sign.boundResult
+      ? { ...sign.boundResult }
+      : undefined;
+  };
+
+  private assertBoundLocal = (profile: BoundSignProfile) => {
+    if (
+      !this.boundProfiles.has(profile) ||
+      this.signingCrypto !== profile.crypto ||
+      this.protocolVersion !== profile.protocolVersion ||
+      JSON.stringify(this.guardPks) !==
+        JSON.stringify(profile.guardPublicKeys) ||
+      JSON.stringify(this.shares) !== JSON.stringify(profile.shareIds) ||
+      (profile.schema === 2) !== this.isResultTransportProfile(profile) ||
+      (profile.schema === 1 && profile.resultTransport !== undefined)
+    ) {
+      throw Error('Bound signing profile changed');
+    }
+  };
+
+  /** Captures a signer-issued profile; this does not authorize a payment. */
+  prepareBoundProfile = async (
+    chainCode: string,
+    derivationPath: readonly number[],
+    resultTransport?: BoundResultTransportCapability,
+  ): Promise<BoundSignProfile> => {
+    const guards = [...this.guardPks];
+    const shares = [...this.shares];
+    const path = [...derivationPath];
+    if (
+      this.signingCrypto !== 'ecdsa' ||
+      // The backend uses the exact ASCII text as its HMAC key, without hex decoding.
+      // Keep the existing 64-character operational ceiling, not a fixed key length.
+      typeof chainCode !== 'string' ||
+      !/^(?:[0-9a-f]{2}){1,32}$/.test(chainCode) ||
+      path.some(
+        (index) =>
+          !Number.isSafeInteger(index) || index < 0 || index > 0xffffffff,
+      ) ||
+      guards.length === 0 ||
+      guards.length !== shares.length ||
+      new Set(guards).size !== guards.length ||
+      new Set(shares).size !== shares.length ||
+      [...guards, ...shares].some(
+        (value) => typeof value !== 'string' || value.length === 0,
+      )
+    ) {
+      throw Error('Invalid bound signing profile');
+    }
+    const rawThreshold = await this.readBoundThreshold(guards.length);
+    const publicKey = await this.getPk({
+      chainCode,
+      derivationPath: [...path],
+    });
+    if (
+      !publicKey ||
+      !/^(02|03)[0-9a-f]{64}$/.test(publicKey) ||
+      !secp.publicKeyVerify(Buffer.from(publicKey, 'hex'))
+    )
+      throw Error('Bound signing public key unavailable');
+    if (
+      resultTransport !== undefined &&
+      (typeof resultTransport !== 'object' ||
+        !this.hasExactKeys(resultTransport, ['capability', 'version']) ||
+        resultTransport.capability !== 'bound-result-transport' ||
+        resultTransport.version !== 1)
+    )
+      throw Error('Invalid bound result transport capability');
+    const capturedTransport = resultTransport
+      ? Object.freeze({
+          capability: resultTransport.capability,
+          version: resultTransport.version,
+        })
+      : undefined;
+    const fields = {
+      schema: capturedTransport ? (2 as const) : (1 as const),
+      curve: 'secp256k1' as const,
+      crypto: 'ecdsa' as const,
+      protocolVersion: this.protocolVersion,
+      guardPublicKeys: Object.freeze(guards),
+      shareIds: Object.freeze(shares),
+      chainCode,
+      derivationPath: Object.freeze(path),
+      rawThreshold,
+      effectiveThreshold: rawThreshold + 1,
+      publicKey,
+      ...(capturedTransport
+        ? { resultTransport: capturedTransport }
+        : undefined),
+    };
+    // SHA-256 of UTF-8 JSON in this fixed field order, excluding profileHash.
+    const profile: BoundSignProfile = Object.freeze({
+      ...fields,
+      profileHash: createHash('sha256')
+        .update(JSON.stringify(fields), 'utf8')
+        .digest('hex'),
+    });
+    this.boundProfiles.add(profile);
+    this.assertBoundLocal(profile);
+    return profile;
+  };
+
+  private readBoundThreshold = async (guardCount: number): Promise<number> => {
+    const response = await this.axios.get<{ threshold: number }>(thresholdUrl, {
+      params: { crypto: 'ecdsa' },
+    });
+    const raw = response.data.threshold;
+    if (!Number.isSafeInteger(raw) || raw < 0 || raw >= guardCount)
+      throw Error('Invalid bound signing threshold');
+    return raw;
+  };
+
+  private boundGate = (sign: Sign, stage: BoundSignStage) => {
+    const bound = sign.bound;
+    if (!bound) return undefined;
+    const { profile, hooks } = bound;
+    return {
+      authorize: async () => {
+        try {
+          if (sign.boundFailed) throw Error('Bound signing operation failed');
+          this.assertBoundLocal(profile);
+          const threshold = await this.readBoundThreshold(
+            profile.guardPublicKeys.length,
+          );
+          const key = await this.getPk({
+            chainCode: profile.chainCode,
+            derivationPath: [...profile.derivationPath],
+          });
+          if (threshold !== profile.rawThreshold || key !== profile.publicKey)
+            throw Error('Bound backend profile changed');
+          await hooks.authorize(profile, stage);
+        } catch (error) {
+          if (stage === 'result' || !sign.boundBackendAttempted)
+            this.failBoundSign(sign, error);
+          throw error;
+        }
+      },
+      assertCurrent: () => {
+        try {
+          if (sign.boundFailed) throw Error('Bound signing operation failed');
+          hooks.assertCurrent(profile, stage);
+          this.assertBoundLocal(profile);
+          if (
+            this.getSign(sign.msg, true) !== sign ||
+            (stage === 'backend' &&
+              (sign.posted || sign.boundResultOnly === true)) ||
+            this.getDate() - sign.addedTime >= this.timeout
+          ) {
+            throw Error('Bound signing operation no longer dispatchable');
+          }
+          if (stage !== 'result') sign.boundDispatchAttempted = true;
+        } catch (error) {
+          if (stage === 'result' || !sign.boundBackendAttempted)
+            this.failBoundSign(sign, error);
+          throw error;
+        }
+      },
+    };
+  };
+
+  private verifySignResult = (
+    sign: Sign,
+    signature: string,
+    recovery?: string,
+  ) =>
+    sign.bound
+      ? this.verify(sign.msg, signature, sign.bound.profile.publicKey, recovery)
+      : this.getPkAndVerifySignature(
+          sign.msg,
+          signature,
+          sign.chainCode,
+          sign.derivationPath,
+          recovery,
+        );
+
+  private sendSignMessage = (
+    sign: Sign,
+    stage: Exclude<BoundSignStage, 'backend' | 'result'>,
+    payload: SignRequestPayload | SignApprovePayload | SignStartPayload,
+    peers: string[],
+    timestamp: number,
+  ) => {
+    if (sign.bound) {
+      payload = JSON.parse(JSON.stringify(payload));
+      if (
+        this.isResultTransportProfile(sign.bound.profile) &&
+        (!this.hasValidTranscript(sign, payload.bound) ||
+          !this.isExactRoster(sign.bound.profile, payload.guards))
+      )
+        throw Error('Invalid bound result transport transcript');
+      if (
+        new Set(payload.guards.map((guard) => guard.publicKey)).size !==
+          payload.guards.length ||
+        new Set(payload.guards.map((guard) => guard.peerId)).size !==
+          payload.guards.length ||
+        payload.guards.some(
+          (guard) =>
+            sign.bound!.profile.guardPublicKeys.indexOf(guard.publicKey) !==
+            guard.index,
+        )
+      ) {
+        throw Error('Invalid bound signing participants');
+      }
+    }
+    return this.sendMessage(
+      stage,
+      payload,
+      peers,
+      timestamp,
+      this.boundGate(sign, stage),
+    );
+  };
 
   /**
    * get threshold value from tss-api instance if threshold didn't set or expired and set for this and detection
@@ -143,10 +578,21 @@ export abstract class TssSigner extends Communicator {
     const timeout = this.getDate() - this.timeout;
     const turn = this.getGuardTurn();
     const releaseSign = await this.signAccessMutex.acquire();
+    // Keep bound outcomes long enough to reject late protocol messages, then
+    // retire the full operation rather than retaining its hooks forever.
+    const boundRetireBefore =
+      timeout - Math.max(this.messageValidDuration, this.signCacheTTLSeconds);
     const timedOutSigns = this.signs.filter(
-      (sign) => sign.addedTime <= timeout,
+      (sign) => !sign.bound && sign.addedTime <= timeout,
     );
-    this.signs = this.signs.filter((sign) => sign.addedTime > timeout);
+    this.signs = this.signs.filter((sign) => {
+      if (sign.bound) {
+        if (sign.addedTime <= timeout)
+          this.failBoundSign(sign, Error('Bound signing timed out'));
+        return sign.addedTime > boundRetireBefore;
+      }
+      return sign.addedTime > timeout;
+    });
     releaseSign();
     for (const sign of timedOutSigns) {
       this.logger.debug(
@@ -199,7 +645,10 @@ export abstract class TssSigner extends Communicator {
     }
     await this.updateThreshold();
     const activeGuards = await this.detection.activeGuards();
-    if (activeGuards.length < this.threshold.value) {
+    if (
+      !this.signs.some((sign) => sign.bound) &&
+      activeGuards.length < this.threshold.value
+    ) {
       this.logger.debug(
         `not enough guards [${activeGuards.length} < ${this.threshold.value}]`,
       );
@@ -208,37 +657,102 @@ export abstract class TssSigner extends Communicator {
     const timestamp = this.getDate();
     const round = Math.floor(timestamp / this.turnDuration);
     if (round !== this.lastUpdateRound) {
+      const eligible = this.signs
+        .filter((sign) => !sign.bound || !sign.posted)
+        .flatMap((sign) => {
+          if (sign.posted) {
+            this.logger.debug(
+              `skipped signing message [${sign.msg}] due to being posted`,
+            );
+            return [];
+          }
+          if (
+            sign.bound &&
+            (sign.boundFailed ||
+              sign.boundSettled ||
+              sign.boundResult !== undefined ||
+              sign.boundResultOnly)
+          )
+            return [];
+          if (
+            activeGuards.length <
+            (sign.bound?.profile.effectiveThreshold ?? this.threshold.value)
+          )
+            return [];
+          const resultTransport = Boolean(
+            sign.bound && this.isResultTransportProfile(sign.bound.profile),
+          );
+          const requestGuards = resultTransport
+            ? this.profileOrderedDetectedRoster(
+                sign.bound!.profile,
+                activeGuards,
+              )
+            : activeGuards;
+          return requestGuards
+            ? [{ sign, resultTransport, requestGuards }]
+            : [];
+        })
+        .slice(0, this.signPerRoundLimit);
+      if (eligible.length === 0) return;
+      // Claim the round synchronously only after eligible work exists. Concurrent
+      // update ticks then observe the claim before request preparation awaits.
       this.lastUpdateRound = round;
       this.logger.debug('processing signs to start');
-      for (const sign of this.signs.slice(0, this.signPerRoundLimit)) {
-        if (sign.posted) {
-          this.logger.debug(
-            `skipped signing message [${sign.msg}] due to being posted`,
-          );
-          continue;
-        }
+      for (const { sign, resultTransport, requestGuards } of eligible) {
         this.logger.debug(`new sign found with [${sign.msg}]`);
-        const payload: SignRequestPayload = {
+        const payload: SignRequestPayload = this.withBoundTranscript(sign, {
           msg: sign.msg,
-          guards: activeGuards,
-        };
-        await this.sendMessage(requestMessage, payload, [], timestamp);
-        const release = await this.signAccessMutex.acquire();
-        sign.request = {
-          guards: [...activeGuards],
-          index: await this.getIndex(),
-          timestamp,
-        };
-        sign.signs = Array(this.guardPks.length).fill('');
-        sign.signs[await this.getIndex()] = await this.signPayload(
-          {
-            msg: sign.msg,
-            guards: activeGuards,
-            initGuardIndex: await this.getIndex(),
-          },
-          timestamp,
-        );
-        release();
+          guards: requestGuards,
+        });
+        if (resultTransport) {
+          const release = await this.signAccessMutex.acquire();
+          try {
+            const index = await this.getIndex();
+            sign.request = {
+              guards: [...requestGuards],
+              index,
+              timestamp,
+            };
+            sign.signs = Array(this.guardPks.length).fill('');
+            sign.signs[index] = await this.signPayload(
+              this.withBoundTranscript(sign, {
+                msg: sign.msg,
+                guards: requestGuards,
+                initGuardIndex: index,
+              }),
+              timestamp,
+            );
+          } finally {
+            release();
+          }
+          try {
+            await this.sendSignMessage(sign, 'request', payload, [], timestamp);
+          } catch (error) {
+            this.failBoundSign(sign, error);
+            throw error;
+          }
+        } else {
+          await this.sendSignMessage(sign, 'request', payload, [], timestamp);
+          const release = await this.signAccessMutex.acquire();
+          try {
+            sign.request = {
+              guards: [...activeGuards],
+              index: await this.getIndex(),
+              timestamp,
+            };
+            sign.signs = Array(this.guardPks.length).fill('');
+            sign.signs[await this.getIndex()] = await this.signPayload(
+              this.withBoundTranscript(sign, {
+                msg: sign.msg,
+                guards: activeGuards,
+                initGuardIndex: await this.getIndex(),
+              }),
+              timestamp,
+            );
+          } finally {
+            release();
+          }
+        }
       }
     }
   };
@@ -278,9 +792,18 @@ export abstract class TssSigner extends Communicator {
     ) => unknown,
     chainCode: string,
     derivationPath?: number[],
+    bound?: BoundSignOperation,
   ) => {
-    const signObject = this.getSign(msg, true);
-    if (signObject) {
+    if (bound) {
+      if (!/^[0-9a-f]{64}$/.test(msg))
+        throw Error('Bound signing requires a 32-byte digest');
+      this.assertBoundLocal(bound.profile);
+    }
+    const joinExistingSign = () => {
+      const signObject = this.getSign(msg, true);
+      if (!signObject) return false;
+      if (bound || signObject.bound)
+        throw Error('already signing this message');
       this.logger.info(`Already signing message [${msg}]`);
       const oldCallback = signObject.callback;
       signObject.callback = (
@@ -292,10 +815,11 @@ export abstract class TssSigner extends Communicator {
         callback(status, message, signature, signatureRecovery);
         oldCallback(status, message, signature, signatureRecovery);
       };
-      return;
-    }
+      return true;
+    };
+    if (joinExistingSign()) return;
 
-    if (Object.hasOwn(this.signCache, msg)) {
+    if (!bound && Object.hasOwn(this.signCache, msg)) {
       const signResult = this.signCache[msg]!;
 
       this.logger.info(
@@ -312,17 +836,23 @@ export abstract class TssSigner extends Communicator {
     }
 
     const release = await this.signAccessMutex.acquire();
-    this.logger.info(`adding new message [${msg}] to signing queue`);
-    this.signs.push({
-      msg,
-      callback,
-      signs: [],
-      addedTime: this.getDate(),
-      posted: false,
-      chainCode,
-      derivationPath,
-    });
-    release();
+    try {
+      if (joinExistingSign()) return;
+      if (bound) delete this.signCache[msg];
+      this.logger.info(`adding new message [${msg}] to signing queue`);
+      this.signs.push({
+        msg,
+        callback,
+        signs: [],
+        addedTime: this.getDate(),
+        posted: false,
+        chainCode,
+        derivationPath,
+        bound,
+      });
+    } finally {
+      release();
+    }
 
     const pending = this.getPendingSign(msg);
     if (pending) {
@@ -330,7 +860,11 @@ export abstract class TssSigner extends Communicator {
         `processing pending request for [${msg}] from other guards`,
       );
       await this.handleRequestMessage(
-        { msg: msg, guards: pending.guards },
+        {
+          msg: msg,
+          guards: pending.guards,
+          ...(pending.bound === undefined ? {} : { bound: pending.bound }),
+        },
         pending.sender,
         pending.index,
         pending.timestamp,
@@ -405,6 +939,12 @@ export abstract class TssSigner extends Communicator {
           senderIndex,
           peerId,
         );
+      case boundResultMessage:
+        return this.handleBoundResultMessage(
+          payload as BoundSignResultPayload,
+          senderIndex,
+          peerId,
+        );
     }
     this.logger.warn(`invalid message type [${messageType}] arrived`);
   };
@@ -456,6 +996,20 @@ export abstract class TssSigner extends Communicator {
     timestamp: number,
     sendRegister = true,
   ) => {
+    const exactSign = this.getSign(payload.msg, true);
+    if (exactSign?.bound) {
+      if (this.isResultTransportProfile(exactSign.bound.profile)) {
+        if (
+          exactSign.boundSelection ||
+          exactSign.boundResultOnly ||
+          !this.hasValidTranscript(exactSign, payload.bound) ||
+          !this.isExactRoster(exactSign.bound.profile, payload.guards)
+        )
+          return;
+      } else if (payload.bound !== undefined) {
+        return;
+      }
+    }
     if (this.getGuardTurn() !== guardIndex) {
       if (sendRegister)
         this.logger.warn(
@@ -470,7 +1024,10 @@ export abstract class TssSigner extends Communicator {
     }
 
     // check signCache
-    if (Object.hasOwn(this.signCache, payload.msg)) {
+    if (
+      !this.getSign(payload.msg, true)?.bound &&
+      Object.hasOwn(this.signCache, payload.msg)
+    ) {
       this.logger.info(
         `signing request for message [${
           payload.msg
@@ -527,13 +1084,17 @@ export abstract class TssSigner extends Communicator {
         this.logger.info(
           `signing request for message [${sign.msg}] approved. sending approval message`,
         );
-        const responsePayload: SignApprovePayload = {
-          msg: payload.msg,
-          guards: payload.guards,
-          initGuardIndex: guardIndex,
-        };
-        await this.sendMessage(
-          approveMessage,
+        const responsePayload: SignApprovePayload = this.withBoundTranscript(
+          sign,
+          {
+            msg: payload.msg,
+            guards: payload.guards,
+            initGuardIndex: guardIndex,
+          },
+        );
+        await this.sendSignMessage(
+          sign,
+          'approve',
           responsePayload,
           [sender],
           timestamp,
@@ -545,8 +1106,14 @@ export abstract class TssSigner extends Communicator {
       );
       const pending = this.getPendingSign(payload.msg);
       const release = await this.pendingAccessMutex.acquire();
+      const capturedGuards = payload.guards.map((guard) => ({ ...guard }));
+      const capturedBound =
+        payload.bound === undefined
+          ? undefined
+          : Object.freeze({ ...payload.bound });
       if (pending) {
-        pending.guards = payload.guards;
+        pending.guards = capturedGuards;
+        pending.bound = capturedBound;
         pending.index = guardIndex;
         pending.timestamp = timestamp;
         pending.sender = sender;
@@ -554,7 +1121,8 @@ export abstract class TssSigner extends Communicator {
         this.pendingSigns.push({
           msg: payload.msg,
           index: guardIndex,
-          guards: payload.guards,
+          guards: capturedGuards,
+          bound: capturedBound,
           timestamp,
           sender,
         });
@@ -586,7 +1154,7 @@ export abstract class TssSigner extends Communicator {
    */
   protected removeSign = (msg: string) => {
     return this.signAccessMutex.acquire().then((release) => {
-      this.signs = this.signs.filter((item) => item.msg !== msg);
+      this.signs = this.signs.filter((item) => item.msg !== msg || item.bound);
       release();
     });
   };
@@ -627,35 +1195,88 @@ export abstract class TssSigner extends Communicator {
     }
     const myPk = await this.messageEnc.getPk();
 
-    if (sign.request && !this.isNoWorkTime()) {
+    const request = sign.request;
+    if (request && !this.isNoWorkTime()) {
       return await this.signAccessMutex.acquire().then(async (release) => {
         try {
+          const resultTransport = Boolean(
+            sign.bound && this.isResultTransportProfile(sign.bound.profile),
+          );
+          if (resultTransport) {
+            const expectedSender = request.guards[guardIndex];
+            if (
+              !this.hasValidTranscript(sign, payload.bound) ||
+              !this.sameGuards(payload.guards, request.guards) ||
+              payload.initGuardIndex !== request.index ||
+              expectedSender?.publicKey !==
+                sign.bound!.profile.guardPublicKeys[guardIndex] ||
+              expectedSender.peerId !== sender
+            )
+              return;
+          } else if (payload.bound !== undefined) {
+            return;
+          }
           sign.signs[guardIndex] = signature;
           const approvedGuards = await this.getApprovedGuards(
-            sign.request!.timestamp,
-            {
+            request.timestamp,
+            this.withBoundTranscript(sign, {
               msg: sign.msg,
-              guards: sign.request!.guards,
+              guards: request.guards,
               initGuardIndex: await this.getIndex(),
-            },
+            }),
             sign.signs,
+            sign.bound?.profile,
           );
-          if (approvedGuards.length >= this.threshold.value) {
+          if (
+            approvedGuards.length >=
+            (sign.bound?.profile.effectiveThreshold ?? this.threshold.value)
+          ) {
             if (this.getSign(payload.msg)) {
-              const payload: SignStartPayload = {
-                msg: sign.msg,
-                signs: sign.signs,
-                guards: sign.request!.guards,
-              };
-              await this.sendMessage(
-                startMessage,
-                payload,
-                approvedGuards
+              if (
+                resultTransport &&
+                approvedGuards.length !==
+                  sign.bound!.profile.guardPublicKeys.length
+              )
+                return;
+              const selectedGuards = resultTransport
+                ? approvedGuards.slice(
+                    0,
+                    sign.bound!.profile.effectiveThreshold,
+                  )
+                : approvedGuards;
+              const selection = resultTransport
+                ? this.makeSelection(sign, request.guards, selectedGuards)
+                : undefined;
+              if (selection) this.installSelection(sign, selection, myPk);
+              const startPayload: SignStartPayload = this.withBoundTranscript(
+                sign,
+                {
+                  msg: sign.msg,
+                  signs: [...sign.signs],
+                  guards: [...request.guards],
+                  ...(selection
+                    ? {
+                        selection: {
+                          selectionHash: selection.selectionHash,
+                          selectedGuards: this.normalizedGuards(
+                            selection.selectedGuards,
+                          ),
+                        },
+                      }
+                    : undefined),
+                },
+              );
+              await this.sendSignMessage(
+                sign,
+                'start',
+                startPayload,
+                (resultTransport ? request.guards : approvedGuards)
                   .filter((item) => item.publicKey !== myPk)
                   .map((item) => item.peerId),
-                sign.request!.timestamp,
+                request.timestamp,
               );
-              await this.startSign(sign.msg, approvedGuards);
+              if (!sign.boundResultOnly)
+                await this.startSign(sign.msg, selectedGuards);
             }
           } else {
             this.logger.debug(
@@ -666,8 +1287,13 @@ export abstract class TssSigner extends Communicator {
           this.logger.warn(
             `an error occurred while handling approve message: ${e}`,
           );
+          if (sign.bound && this.isResultTransportProfile(sign.bound.profile)) {
+            this.failBoundSign(sign, e);
+            throw e;
+          }
+        } finally {
+          release();
         }
-        release();
       });
     } else {
       this.logger.debug(
@@ -688,6 +1314,7 @@ export abstract class TssSigner extends Communicator {
     sender: string,
   ) => {
     const sign = this.getSign(payload.msg);
+    if (sign?.bound) return;
     if (!sign) {
       this.logger.debug(
         `handleSignCachedMessage: signing message not found [${payload.msg}]`,
@@ -695,11 +1322,9 @@ export abstract class TssSigner extends Communicator {
       return;
     }
 
-    const signVerified = await this.getPkAndVerifySignature(
-      sign.msg,
+    const signVerified = await this.verifySignResult(
+      sign,
       payload.signature,
-      sign.chainCode,
-      sign.derivationPath,
       payload.signatureRecovery,
     );
 
@@ -750,6 +1375,77 @@ export abstract class TssSigner extends Communicator {
       );
       return;
     }
+    if (sign.bound && this.isResultTransportProfile(sign.bound.profile)) {
+      const profile = sign.bound.profile;
+      const senderGuard = payload.guards[guardIndex];
+      if (
+        !this.hasValidTranscript(sign, payload.bound) ||
+        !this.isExactRoster(profile, payload.guards) ||
+        senderGuard?.peerId !== sender ||
+        !payload.selection ||
+        !this.hasExactKeys(payload.selection, [
+          'selectionHash',
+          'selectedGuards',
+        ])
+      )
+        return;
+      const payloadToSign: SignApprovePayload = {
+        msg: payload.msg,
+        guards: payload.guards,
+        initGuardIndex: guardIndex,
+        bound: payload.bound,
+      };
+      const approvedGuards = await this.getApprovedGuards(
+        timestamp,
+        payloadToSign,
+        payload.signs,
+        profile,
+      );
+      if (approvedGuards.length !== profile.guardPublicKeys.length) return;
+      const expectedSelected = approvedGuards.slice(
+        0,
+        profile.effectiveThreshold,
+      );
+      const expected = this.makeSelection(
+        sign,
+        payload.guards,
+        expectedSelected,
+      );
+      if (
+        payload.selection.selectionHash !== expected.selectionHash ||
+        !this.sameGuards(
+          payload.selection.selectedGuards,
+          expected.selectedGuards,
+        )
+      )
+        return;
+      const myPk = await this.messageEnc.getPk();
+      this.installSelection(sign, expected, myPk);
+      const pendingResults = sign.boundPendingResults?.filter(
+        (item): item is PendingBoundResult => item !== undefined,
+      );
+      sign.boundPendingResults = undefined;
+      if (sign.boundResultOnly) {
+        for (const pending of pendingResults ?? []) {
+          await this.handleBoundResultMessage(
+            pending.payload,
+            pending.senderIndex,
+            pending.senderPeerId,
+          );
+          if (sign.boundSettled || sign.boundFailed) break;
+        }
+      } else {
+        await this.signAccessMutex.acquire().then(async (release) => {
+          try {
+            await this.startSign(sign.msg, [...expected.selectedGuards]);
+          } finally {
+            release();
+          }
+        });
+      }
+      return;
+    }
+    if (payload.bound !== undefined || payload.selection !== undefined) return;
     const payloadToSign: SignApprovePayload = {
       msg: payload.msg,
       guards: payload.guards,
@@ -766,11 +1462,18 @@ export abstract class TssSigner extends Communicator {
       timestamp,
       payloadToSign,
       payload.signs,
+      sign.bound?.profile,
     );
-    if (approvedGuards.length >= this.threshold.value) {
+    if (
+      approvedGuards.length >=
+      (sign.bound?.profile.effectiveThreshold ?? this.threshold.value)
+    ) {
       await this.signAccessMutex.acquire().then(async (release) => {
-        await this.startSign(sign.msg, approvedGuards);
-        release();
+        try {
+          await this.startSign(sign.msg, approvedGuards);
+        } finally {
+          release();
+        }
       });
     }
   };
@@ -786,11 +1489,23 @@ export abstract class TssSigner extends Communicator {
     timestamp: number,
     payload: SignApprovePayload,
     signs: Array<string>,
+    profile?: BoundSignProfile,
   ): Promise<Array<ActiveGuard>> => {
+    if (
+      profile &&
+      (new Set(payload.guards.map((guard) => guard.publicKey)).size !==
+        payload.guards.length ||
+        new Set(payload.guards.map((guard) => guard.peerId)).size !==
+          payload.guards.length)
+    ) {
+      throw Error('Duplicate bound signing guards');
+    }
     return (
       await Promise.all(
         payload.guards.map(async (guard) => {
-          const index = this.guardPks.indexOf(guard.publicKey);
+          const index = (profile?.guardPublicKeys ?? this.guardPks).indexOf(
+            guard.publicKey,
+          );
           if (index === -1) return undefined;
           const sign = signs[index];
           if (sign === '') return undefined;
@@ -799,7 +1514,7 @@ export abstract class TssSigner extends Communicator {
               payload,
               timestamp,
               guard.publicKey,
-              this.protocolVersion,
+              profile?.protocolVersion ?? this.protocolVersion,
             ),
             sign,
             guard.publicKey,
@@ -815,29 +1530,74 @@ export abstract class TssSigner extends Communicator {
    * @param message
    * @param guards
    */
-  startSign = (message: string, guards: Array<ActiveGuard>) => {
+  startSign = async (message: string, guards: Array<ActiveGuard>) => {
     const sign = this.getSign(message);
+    if (!sign && this.getSign(message, true)?.bound)
+      throw Error('Bound signing operation no longer dispatchable');
     if (sign) {
-      sign.posted = true;
+      const profile = sign.bound?.profile;
+      if (profile && this.isResultTransportProfile(profile)) {
+        const myPk = await this.messageEnc.getPk();
+        if (
+          !sign.boundSelection ||
+          sign.boundResultOnly ||
+          !sign.boundSelection.selectedGuards.some(
+            (guard) => guard.publicKey === myPk,
+          ) ||
+          !this.sameGuards(guards, sign.boundSelection.selectedGuards) ||
+          guards.length !== profile.effectiveThreshold
+        )
+          throw Error('Bound result-only member cannot dispatch backend');
+      }
+      if (
+        profile &&
+        (guards.length < profile.effectiveThreshold ||
+          new Set(guards.map((guard) => guard.publicKey)).size !==
+            guards.length ||
+          new Set(guards.map((guard) => guard.peerId)).size !== guards.length ||
+          guards.some(
+            (guard) => !profile.guardPublicKeys.includes(guard.publicKey),
+          ))
+      ) {
+        throw Error('Invalid bound signing participants');
+      }
       const remainingTime = this.timeout - (this.getDate() - sign.addedTime);
+      if (sign.bound) sign.boundCallbackId ??= randomUUID();
       const data = {
         peers: guards.map((item) => ({
-          shareID: this.shares[this.guardPks.indexOf(item.publicKey)],
+          shareID: (profile?.shareIds ?? this.shares)[
+            (profile?.guardPublicKeys ?? this.guardPks).indexOf(item.publicKey)
+          ],
           p2pID: item.peerId,
         })),
         message: message,
         crypto: this.signingCrypto,
         operationTimeout: remainingTime - this.responseDelay,
-        callBackUrl: this.callbackUrl,
-        chainCode: sign.chainCode,
-        derivationPath: sign.derivationPath,
+        callBackUrl: sign.bound
+          ? `${this.callbackUrl}${this.callbackUrl.includes('?') ? '&' : '?'}boundOperationId=${sign.boundCallbackId}`
+          : this.callbackUrl,
+        chainCode: profile?.chainCode ?? sign.chainCode,
+        derivationPath: profile
+          ? [...profile.derivationPath]
+          : sign.derivationPath,
       };
       this.logger.debug(
         `requesting tss-api to sign. data: ${JSON.stringify(data)}`,
       );
+      const gate = this.boundGate(sign, 'backend');
+      if (gate) {
+        await gate.authorize();
+        gate.assertCurrent();
+      }
+      sign.posted = true;
+      if (sign.bound) sign.boundBackendAttempted = true;
       return this.axios.post(signUrl, data).catch((err) => {
         this.logger.warn('Can not communicate with tss backend');
         this.logger.debug(err.stack);
+        if (sign.bound) {
+          this.failBoundSign(sign, err);
+          return;
+        }
         if (sign.callback) {
           this.signAccessMutex.acquire().then((release) => {
             sign.callback(false, err.status_code);
@@ -874,6 +1634,175 @@ export abstract class TssSigner extends Communicator {
     return undefined;
   };
 
+  private sendBoundResult = async (
+    sign: Sign,
+    signature: string,
+    signatureRecovery: string,
+  ) => {
+    const profile = sign.bound?.profile;
+    const selection = sign.boundSelection;
+    if (
+      !profile ||
+      !this.isResultTransportProfile(profile) ||
+      !selection ||
+      !sign.boundBackendAttempted ||
+      sign.boundResultOnly
+    )
+      throw Error('Bound result producer is not selected');
+    const myPk = await this.messageEnc.getPk();
+    if (!selection.selectedGuards.some((guard) => guard.publicKey === myPk))
+      throw Error('Bound result producer is not selected');
+    const payload: BoundSignResultPayload = {
+      msg: sign.msg,
+      bound: this.boundTranscript(profile),
+      selectionHash: selection.selectionHash,
+      signature,
+      signatureRecovery,
+    };
+    await this.sendMessage(
+      boundResultMessage,
+      payload,
+      selection.fullRoster
+        .filter((guard) => guard.publicKey !== myPk)
+        .map((guard) => guard.peerId),
+      undefined,
+      this.boundGate(sign, 'result'),
+    );
+    sign.boundResultEmitted = true;
+  };
+
+  protected handleBoundResultMessage = async (
+    payload: BoundSignResultPayload,
+    senderIndex: number,
+    senderPeerId: string,
+  ) => {
+    if (
+      !payload ||
+      typeof payload !== 'object' ||
+      !this.hasExactKeys(payload, [
+        'msg',
+        'bound',
+        'selectionHash',
+        'signature',
+        'signatureRecovery',
+      ]) ||
+      typeof payload.msg !== 'string' ||
+      typeof payload.selectionHash !== 'string' ||
+      typeof payload.signature !== 'string' ||
+      typeof payload.signatureRecovery !== 'string'
+    )
+      return;
+    const sign = this.getSign(payload.msg, true);
+    const profile = sign?.bound?.profile;
+    if (
+      !sign ||
+      !profile ||
+      !this.isResultTransportProfile(profile) ||
+      sign.boundFailed ||
+      (sign.boundSettled && !sign.boundResult) ||
+      !this.hasValidTranscript(sign, payload.bound) ||
+      !/^[0-9a-f]{64}$/.test(payload.selectionHash) ||
+      !/^[0-9a-f]{128}$/.test(payload.signature) ||
+      !/^[0-9a-f]{2}$/.test(payload.signatureRecovery) ||
+      !Number.isSafeInteger(senderIndex) ||
+      senderIndex < 0 ||
+      senderIndex >= profile.guardPublicKeys.length
+    )
+      return;
+    let selection = sign.boundSelection;
+    if (!selection) {
+      if (this.getDate() - sign.addedTime >= this.timeout) {
+        this.failBoundSign(sign, Error('Bound signing timed out'));
+        return;
+      }
+      const release = await this.signAccessMutex.acquire();
+      try {
+        selection = sign.boundSelection;
+        if (!selection) {
+          if (sign.boundFailed || sign.boundSettled) return;
+          sign.boundPendingResults ??= Array(
+            profile.guardPublicKeys.length,
+          ).fill(undefined);
+          sign.boundPendingResults[senderIndex] = Object.freeze({
+            payload: Object.freeze({
+              ...payload,
+              bound: Object.freeze({ ...payload.bound }),
+            }),
+            senderIndex,
+            senderPeerId,
+          });
+          return;
+        }
+      } finally {
+        release();
+      }
+    }
+    if (
+      !sign.boundResultOnly ||
+      payload.selectionHash !== selection.selectionHash
+    )
+      return;
+    const senderPk = profile.guardPublicKeys[senderIndex];
+    const selectedSender = selection.selectedGuards.find(
+      (guard) => guard.publicKey === senderPk,
+    );
+    if (!selectedSender || selectedSender.peerId !== senderPeerId) return;
+    if (this.hasAcceptedBoundResult(sign, payload)) return;
+    if (sign.boundSettled) return;
+    const gate = this.boundGate(sign, 'result')!;
+    try {
+      await gate.authorize();
+    } catch (error) {
+      if (this.hasAcceptedBoundResult(sign, payload)) return;
+      throw error;
+    }
+    if (this.hasAcceptedBoundResult(sign, payload)) return;
+    try {
+      gate.assertCurrent();
+    } catch (error) {
+      if (this.hasAcceptedBoundResult(sign, payload)) return;
+      throw error;
+    }
+    let verified: boolean;
+    try {
+      verified = await this.verifySignResult(
+        sign,
+        payload.signature,
+        payload.signatureRecovery,
+      );
+    } catch (error) {
+      if (this.hasAcceptedBoundResult(sign, payload)) return;
+      throw error;
+    }
+    if (this.hasAcceptedBoundResult(sign, payload)) return;
+    try {
+      gate.assertCurrent();
+    } catch (error) {
+      if (this.hasAcceptedBoundResult(sign, payload)) return;
+      throw error;
+    }
+    if (!verified) return;
+    const release = await this.signAccessMutex.acquire();
+    try {
+      if (this.hasAcceptedBoundResult(sign, payload)) return;
+      if (sign.boundSettled || sign.boundFailed) return;
+      gate.assertCurrent();
+      sign.boundResult = Object.freeze({
+        signature: payload.signature,
+        signatureRecovery: payload.signatureRecovery,
+      });
+      sign.boundPendingResults = undefined;
+      sign.boundSettled = true;
+      await this.handleSuccessfulSign(
+        sign,
+        payload.signature,
+        payload.signatureRecovery,
+      );
+    } finally {
+      release();
+    }
+  };
+
   /**
    * handle signing data callback for a message and process callback function
    * @param status
@@ -888,22 +1817,29 @@ export abstract class TssSigner extends Communicator {
     signature?: string,
     signatureRecovery?: string,
     error?: string,
+    boundOperationId?: string,
   ) => {
     const sign = this.getSign(message, true);
     if (sign === undefined || !sign.posted) {
       throw Error('Invalid message');
     }
+    if (
+      sign.bound
+        ? !boundOperationId || sign.boundCallbackId !== boundOperationId
+        : boundOperationId !== undefined
+    )
+      throw Error('Invalid callback operation');
+    if (sign.bound && !sign.boundBackendAttempted)
+      throw Error('Bound backend was not invoked');
 
     if (status === StatusEnum.Success) {
       if (!signature) {
         throw Error('signature is required when sign was successful');
       }
 
-      const signVerified = await this.getPkAndVerifySignature(
-        sign.msg,
+      const signVerified = await this.verifySignResult(
+        sign,
         signature,
-        sign.chainCode,
-        sign.derivationPath,
         signatureRecovery,
       );
 
@@ -920,9 +1856,12 @@ export abstract class TssSigner extends Communicator {
         signatureRecovery,
       );
     } else {
-      sign.callback(false, error);
+      if (sign.bound) this.failBoundSign(sign, error);
+      else sign.callback(false, error);
     }
-    return this.removeSign(message);
+    // Bound records are retired by cleanup. Removing by digest here could erase
+    // a newer legacy operation queued while this callback awaited verification.
+    if (!sign.bound) return this.removeSign(message);
   };
 
   /**
@@ -948,6 +1887,39 @@ export abstract class TssSigner extends Communicator {
     signature?: string,
     signatureRecovery?: string,
   ) => {
+    if (sign.bound) {
+      const resultTransport = this.isResultTransportProfile(sign.bound.profile);
+      if (sign.boundResult) {
+        if (
+          sign.boundResult.signature !== signature ||
+          sign.boundResult.signatureRecovery !== signatureRecovery
+        ) {
+          throw Error('Conflicting bound signing result');
+        }
+        return;
+      }
+      if (resultTransport && !signatureRecovery)
+        throw Error('Bound result transport requires signature recovery');
+      sign.boundResult = Object.freeze({
+        signature: signature!,
+        signatureRecovery,
+      });
+      sign.boundPendingResults = undefined;
+      sign.posted = true;
+      if (resultTransport) {
+        try {
+          await this.sendBoundResult(sign, signature!, signatureRecovery!);
+        } catch (error) {
+          this.failBoundSign(sign, error);
+          throw error;
+        }
+      }
+      if (!sign.boundSettled) {
+        sign.boundSettled = true;
+        await this.handleSuccessfulSign(sign, signature, signatureRecovery);
+      }
+      return;
+    }
     await this.handleSuccessfulSign(sign, signature, signatureRecovery);
     this.addSignToCache(sign.msg, {
       signature: signature!,

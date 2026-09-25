@@ -26,6 +26,17 @@ export interface SignerBaseConfig {
 export type SignerConfig = Omit<SignerBaseConfig, 'signingCrypto'>;
 
 export interface Sign {
+  bound?: BoundSignOperation;
+  boundCallbackId?: string;
+  boundFailed?: boolean;
+  boundSettled?: boolean;
+  boundDispatchAttempted?: boolean;
+  boundBackendAttempted?: boolean;
+  boundResultEmitted?: boolean;
+  boundResultOnly?: boolean;
+  boundSelection?: BoundSignSelection;
+  boundResult?: SignResult;
+  boundPendingResults?: Array<PendingBoundResult | undefined>;
   msg: string;
   callback: (
     status: boolean,
@@ -45,9 +56,65 @@ export interface Sign {
   derivationPath?: number[];
 }
 
+export interface BoundSignProfile {
+  readonly schema: 1 | 2;
+  readonly curve: 'secp256k1';
+  readonly profileHash: string;
+  readonly crypto: 'ecdsa';
+  readonly protocolVersion: string;
+  readonly guardPublicKeys: readonly string[];
+  readonly shareIds: readonly string[];
+  readonly chainCode: string;
+  readonly derivationPath: readonly number[];
+  readonly rawThreshold: number;
+  readonly effectiveThreshold: number;
+  readonly publicKey: string;
+  readonly resultTransport?: BoundResultTransportCapability;
+}
+
+export interface BoundResultTransportCapability {
+  readonly capability: 'bound-result-transport';
+  readonly version: 1;
+}
+
+export interface BoundSignTranscript {
+  readonly capability: 'bound-result-transport';
+  readonly version: 1;
+  readonly profileHash: string;
+}
+
+export interface BoundSignSelectionPayload {
+  selectionHash: string;
+  selectedGuards: Array<ActiveGuard>;
+}
+
+export interface BoundSignSelection {
+  readonly selectionHash: string;
+  readonly selectedGuards: readonly Readonly<ActiveGuard>[];
+  readonly fullRoster: readonly Readonly<ActiveGuard>[];
+}
+
+export type BoundSignStage =
+  | 'request'
+  | 'approve'
+  | 'start'
+  | 'backend'
+  | 'result';
+
+export interface BoundSignHooks {
+  authorize(profile: BoundSignProfile, stage: BoundSignStage): Promise<void>;
+  assertCurrent(profile: BoundSignProfile, stage: BoundSignStage): void;
+}
+
+export interface BoundSignOperation {
+  readonly profile: BoundSignProfile;
+  readonly hooks: BoundSignHooks;
+}
+
 export interface PendingSign {
   msg: string;
   guards: Array<ActiveGuard>;
+  bound?: BoundSignTranscript;
   index: number;
   timestamp: number;
   sender: string;
@@ -55,12 +122,14 @@ export interface PendingSign {
 export interface SignRequestPayload {
   msg: string;
   guards: Array<ActiveGuard>;
+  bound?: BoundSignTranscript;
 }
 
 export interface SignApprovePayload {
   msg: string;
   guards: Array<ActiveGuard>;
   initGuardIndex: number;
+  bound?: BoundSignTranscript;
 }
 
 export interface SignCachedPayload {
@@ -73,6 +142,22 @@ export interface SignStartPayload {
   msg: string;
   guards: Array<ActiveGuard>;
   signs: Array<string>;
+  bound?: BoundSignTranscript;
+  selection?: BoundSignSelectionPayload;
+}
+
+export interface BoundSignResultPayload {
+  msg: string;
+  bound: BoundSignTranscript;
+  selectionHash: string;
+  signature: string;
+  signatureRecovery: string;
+}
+
+export interface PendingBoundResult {
+  readonly payload: BoundSignResultPayload;
+  readonly senderIndex: number;
+  readonly senderPeerId: string;
 }
 
 export interface PublicKeyID {
@@ -84,7 +169,12 @@ export interface GetPublicKeyResponse {
   publicKey: string;
 }
 
-export type SignMessageType = 'request' | 'approve' | 'cached' | 'start';
+export type SignMessageType =
+  | 'request'
+  | 'approve'
+  | 'cached'
+  | 'start'
+  | 'bound-result-v1';
 
 export enum StatusEnum {
   Success = 'success',
