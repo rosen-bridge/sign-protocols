@@ -111,7 +111,16 @@ export abstract class Communicator {
     payload: any,
     peers: Array<string>,
     timestamp?: number,
+    gate?: { authorize: () => Promise<void>; assertCurrent: () => void },
   ) => {
+    if (gate) {
+      payload = JSON.parse(JSON.stringify(payload));
+      peers = [...peers];
+      gate = {
+        authorize: gate.authorize.bind(gate),
+        assertCurrent: gate.assertCurrent.bind(gate),
+      };
+    }
     this.logger.debug(
       `sending new message of type ${messageType} with payload ${JSON.stringify(
         payload,
@@ -129,7 +138,15 @@ export abstract class Communicator {
       index: await this.getIndex(),
       version: this.protocolVersion,
     };
-    this.submitMessage(JSON.stringify(message), peers);
+    const serialized = JSON.stringify(message);
+    if (gate) {
+      await gate.authorize();
+      gate.assertCurrent();
+    }
+    const submission = this.submitMessage(serialized, peers);
+    // Bound sends must observe an asynchronous enqueue failure before their
+    // caller records the result as emitted. Preserve legacy fire-and-forget.
+    if (gate) await submission;
   };
 
   /**

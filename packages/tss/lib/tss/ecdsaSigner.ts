@@ -1,9 +1,39 @@
 import pkg from 'secp256k1';
 
-import { Sign, SignerConfig, SignResult } from '../types/signer';
+import {
+  Sign,
+  SignerConfig,
+  SignResult,
+  BoundSignProfile,
+  BoundSignHooks,
+} from '../types/signer';
 import { TssSigner } from './tssSigner';
 
 export class EcdsaSigner extends TssSigner {
+  /** Uses a signer-issued profile and per-dispatch checks; neither grants payment authority. */
+  signBoundPromised = (
+    message: string,
+    profile: BoundSignProfile,
+    hooks: BoundSignHooks,
+  ): Promise<SignResult> => {
+    const captured = Object.freeze({
+      authorize: hooks.authorize.bind(hooks),
+      assertCurrent: hooks.assertCurrent.bind(hooks),
+    });
+    return new Promise((resolve, reject) => {
+      this.sign(
+        message,
+        (status, error, signature, signatureRecovery) => {
+          if (status && signature && signatureRecovery)
+            resolve({ signature, signatureRecovery });
+          else reject(error ?? Error('Bound signing failed'));
+        },
+        profile.chainCode,
+        [...profile.derivationPath],
+        Object.freeze({ profile, hooks: captured }),
+      ).catch(reject);
+    });
+  };
   constructor(config: SignerConfig) {
     super({
       logger: config.logger,
