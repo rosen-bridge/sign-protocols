@@ -10,6 +10,7 @@ import { turnTime as defaultTurnTime } from './const';
 import { MultiSigUtils } from './multiSigUtils';
 import {
   CommitmentPayload,
+  ContributionRequest,
   ErgoMultiSigConfig,
   GenerateCommitmentPayload,
   InitiateSignPayload,
@@ -21,6 +22,14 @@ import {
 } from './types';
 
 export class MultiSigHandler extends Communicator {
+  /** Version of the optional local contribution authorization contract. */
+  readonly contributionValidationVersion = 1;
+  private readonly beforeContribution: ErgoMultiSigConfig['beforeContribution'];
+  private readonly failedContributions = new WeakSet<TxQueued>();
+  private readonly pendingCommitments = new WeakMap<
+    TxQueued,
+    { coordinatorIndex: number | undefined; promise: Promise<void> }
+  >();
   /**
    * version of the ergo multi-sig protocol's message envelope and semantics,
    * tied to this package's own version
@@ -54,7 +63,108 @@ export class MultiSigHandler extends Communicator {
     this.multiSigUtilsInstance = config.multiSigUtilsInstance;
     this.ergoGuardPks = config.ergoGuardPks ?? [];
     this.guardDetection = config.guardDetection;
+    this.beforeContribution = config.beforeContribution;
   }
+
+  private failContribution = (transaction: TxQueued, error: unknown): never => {
+    const failure =
+      error instanceof Error
+        ? error
+        : new Error('Contribution authorization rejected');
+    this.failedContributions.add(transaction);
+    transaction.reject?.(failure);
+    throw failure;
+  };
+
+  private contributionContext = () => ({
+    turn: Math.floor(Date.now() / this.turnTime),
+    communicationKeys: this.guardPks.join(','),
+    ergoKeys: this.ergoGuardPks.join(','),
+  });
+
+  private assertContributionContext = (
+    transaction: TxQueued,
+    context: ReturnType<MultiSigHandler['contributionContext']>,
+  ) => {
+    if (
+      Math.floor(Date.now() / this.turnTime) !== context.turn ||
+      this.guardPks.join(',') !== context.communicationKeys ||
+      this.ergoGuardPks.join(',') !== context.ergoKeys
+    )
+      this.failContribution(
+        transaction,
+        new Error('Contribution state changed'),
+      );
+  };
+
+  /** Capture before any hint extraction; the final check runs synchronously
+   * beside the native operation, after authorization's last await. */
+  private captureContribution = (
+    txId: string,
+    transaction: TxQueued,
+    kind: ContributionRequest['kind'],
+    context = this.contributionContext(),
+  ) => {
+    const tx = transaction.tx;
+    const reducedHex = Buffer.from(tx!.sigma_serialize_bytes()).toString('hex');
+    const secret = transaction.secret;
+    const coordinator = transaction.coordinator;
+    const commitments = transaction.commitments;
+    const signs = transaction.signs;
+    const requiredSigner = transaction.requiredSigner;
+    const boxes = transaction.boxes;
+    const dataBoxes = transaction.dataBoxes;
+    const boxBytes = (values: wasm.ErgoBox[]) => {
+      try {
+        return values
+          .map((box) =>
+            Buffer.from(box.sigma_serialize_bytes()).toString('hex'),
+          )
+          .join(',');
+      } catch (error) {
+        return this.failContribution(transaction, error);
+      }
+    };
+    const boxesHex = boxBytes(boxes);
+    const dataBoxesHex = boxBytes(dataBoxes);
+    const request: ContributionRequest = Object.freeze({
+      txId,
+      kind,
+      reducedHex,
+    });
+    const assertCurrent = () => {
+      if (
+        this.failedContributions.has(transaction) ||
+        this.transactions.get(txId) !== transaction ||
+        transaction.tx !== tx ||
+        Buffer.from(tx!.sigma_serialize_bytes()).toString('hex') !==
+          reducedHex ||
+        transaction.secret !== secret ||
+        transaction.coordinator !== coordinator ||
+        transaction.commitments !== commitments ||
+        transaction.signs !== signs ||
+        transaction.requiredSigner !== requiredSigner ||
+        transaction.boxes !== boxes ||
+        transaction.dataBoxes !== dataBoxes ||
+        boxBytes(boxes) !== boxesHex ||
+        boxBytes(dataBoxes) !== dataBoxesHex
+      )
+        this.failContribution(
+          transaction,
+          new Error('Contribution state changed'),
+        );
+      this.assertContributionContext(transaction, context);
+    };
+    const authorize = async () => {
+      assertCurrent();
+      try {
+        await this.beforeContribution!(request);
+      } catch (error) {
+        this.failContribution(transaction, error);
+      }
+    };
+    return { authorize, assertCurrent };
+  };
 
   /**
    * getting all peers without initializing IDs
@@ -252,6 +362,31 @@ export class MultiSigHandler extends Communicator {
     coordinatorIndex?: number,
   ): Promise<void> => {
     const transaction = this.transactions.get(txId);
+    if (!this.beforeContribution || !transaction?.tx)
+      return this.generateCommitmentOnce(txId, coordinatorIndex);
+
+    const pending = this.pendingCommitments.get(transaction);
+    if (pending && pending.coordinatorIndex === coordinatorIndex)
+      return pending.promise;
+
+    // Duplicate requests must share the authorization and native secret write.
+    // Otherwise the first successful write makes the second snapshot stale.
+    const promise = this.generateCommitmentOnce(txId, coordinatorIndex);
+    const operation = { coordinatorIndex, promise };
+    this.pendingCommitments.set(transaction, operation);
+    try {
+      await promise;
+    } finally {
+      if (this.pendingCommitments.get(transaction) === operation)
+        this.pendingCommitments.delete(transaction);
+    }
+  };
+
+  private generateCommitmentOnce = async (
+    txId: string,
+    coordinatorIndex?: number,
+  ): Promise<void> => {
+    const transaction = this.transactions.get(txId);
     if (transaction && transaction.tx) {
       // If this is a request from a coordinator, set them as the coordinator for this tx
       if (coordinatorIndex !== undefined) {
@@ -269,6 +404,15 @@ export class MultiSigHandler extends Communicator {
         transaction.coordinator = currentTurn;
       }
 
+      if (this.beforeContribution) {
+        const contribution = this.captureContribution(
+          txId,
+          transaction,
+          'commitment',
+        );
+        await contribution.authorize();
+        contribution.assertCurrent();
+      }
       transaction.secret =
         this.getProver().generate_commitments_for_reduced_transaction(
           transaction.tx,
@@ -323,6 +467,9 @@ export class MultiSigHandler extends Communicator {
     signature: string,
     index: number,
   ): Promise<void> => {
+    const authorization = this.beforeContribution
+      ? this.contributionContext()
+      : undefined;
     if (payload.txId) {
       const pub = this.ergoGuardPks[index];
 
@@ -337,8 +484,12 @@ export class MultiSigHandler extends Communicator {
           return;
         }
 
+        if (authorization)
+          this.assertContributionContext(transaction, authorization);
         // Check if I'm the coordinator for this transaction
         const myIndex = await this.getIndex();
+        if (authorization)
+          this.assertContributionContext(transaction, authorization);
         if (transaction.coordinator !== myIndex) {
           this.logger.debug(
             `Received commitment from [${sender}] for tx [${payload.txId}] but this guard is not the coordinator. Coordinator index: ${transaction.coordinator}, my index: ${myIndex}.`,
@@ -388,6 +539,14 @@ export class MultiSigHandler extends Communicator {
               const hintsCopy = wasm.TransactionHintsBag.from_json(
                 JSON.stringify(hints.to_json()),
               );
+              const contribution = this.beforeContribution
+                ? this.captureContribution(
+                    payload.txId,
+                    transaction,
+                    'coordinator-sign',
+                    authorization,
+                  )
+                : undefined;
               const signedTxSim =
                 MultiSigUtils.getEmptyProver().sign_reduced_transaction_multi(
                   transaction.tx,
@@ -416,6 +575,10 @@ export class MultiSigHandler extends Communicator {
                 );
 
               MultiSigUtils.add_hints(hints, transaction.secret, inputLen);
+              if (contribution) {
+                await contribution.authorize();
+                contribution.assertCurrent();
+              }
               const signedTx = this.getProver().sign_reduced_transaction_multi(
                 transaction.tx,
                 hints,
@@ -493,6 +656,9 @@ export class MultiSigHandler extends Communicator {
     payload: InitiateSignPayload,
     index: number,
   ): Promise<void> => {
+    const authorization = this.beforeContribution
+      ? this.contributionContext()
+      : undefined;
     const currentTurn = this.getCurrentTurnInd();
     if (currentTurn !== index) {
       this.logger.debug(
@@ -512,6 +678,8 @@ export class MultiSigHandler extends Communicator {
           );
           return;
         }
+        if (authorization)
+          this.assertContributionContext(transaction, authorization);
         this.logger.info(`Initiating sign for tx [${payload.txId}]...`);
         const myPub = this.getPk();
         const signed = payload.committedInds.map(
@@ -548,6 +716,16 @@ export class MultiSigHandler extends Communicator {
 
         MultiSigUtils.add_hints(hints, transaction.secret, inputLen);
 
+        if (this.beforeContribution) {
+          const contribution = this.captureContribution(
+            payload.txId,
+            transaction,
+            'peer-sign',
+            authorization,
+          );
+          await contribution.authorize();
+          contribution.assertCurrent();
+        }
         const partial = this.getProver().sign_reduced_transaction_multi(
           transaction.tx,
           hints,
@@ -750,6 +928,9 @@ export class MultiSigHandler extends Communicator {
    * @param txId
    */
   public handleMyTurnForTx = async (txId: string) => {
+    const authorization = this.beforeContribution
+      ? this.contributionContext()
+      : undefined;
     const transaction = this.transactions.get(txId);
     if (!transaction) return;
 
@@ -759,6 +940,8 @@ export class MultiSigHandler extends Communicator {
       this.logger.debug(
         `Initiating sign for tx [${txId}] because it's this guards turn. The correct turn is [${await this.getCurrentTurnId()}]...`,
       );
+      if (authorization)
+        this.assertContributionContext(transaction, authorization);
       this.cleanTxState(transaction);
       transaction.coordinator = myInd;
       await this.generateCommitment(txId);
