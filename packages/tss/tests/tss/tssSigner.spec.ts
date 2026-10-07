@@ -385,6 +385,51 @@ describe('TssSigner', () => {
       expect(signs.filter((item) => item !== '').length).toEqual(1);
       expect(signs[0]).not.toEqual('');
     });
+
+    /**
+     * @target TssSigner.update should release the sign mutex when signing
+     * a payload fails, so later operations are not blocked forever
+     * @dependencies
+     * @scenario
+     * - mock activeGuards to return a list of 7 active guard
+     * - mock `Date.now` to return 1686285600 ( a random timestamp when its this guard turn)
+     * - mock signPayload to reject
+     * - call update
+     * - race a cleanup call against a 1 second timeout
+     * @expected
+     * - update must reject with the signPayload error
+     * - cleanup must complete before the timeout
+     */
+    it('should release the sign mutex when signing a payload fails', async () => {
+      vi.setSystemTime(new Date(1686285600608));
+      const activeGuards = Array(7)
+        .fill('')
+        .map((item, index) => ({
+          peerId: `peerId-${index}`,
+          publicKey: `publicKey-${index}`,
+          index: index,
+        }));
+      vi.spyOn(detection, 'activeGuards').mockResolvedValue(activeGuards);
+      // sendMessage signs its payload through signPayload first; only the
+      // second call, the one inside the mutex in update, fails
+      let signPayloadCalls = 0;
+      vi.spyOn(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        signer as any,
+        'signPayload',
+      ).mockImplementation(async () => {
+        signPayloadCalls += 1;
+        if (signPayloadCalls === 2) throw new Error('sign failed');
+        return 'payload signature';
+      });
+      await expect(signer.update()).rejects.toThrow('sign failed');
+      const completed = await Promise.race([
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (signer as any).cleanup().then(() => true),
+        new Promise((resolve) => setTimeout(() => resolve(false), 1000)),
+      ]);
+      expect(completed).toEqual(true);
+    });
   });
 
   describe('getGuardTurn', () => {
@@ -603,6 +648,44 @@ describe('TssSigner', () => {
         'sign failed',
         undefined,
         undefined,
+      );
+    });
+
+    /**
+     * @target TssSigner.sign should add only one entry and call both
+     * callbacks when two sign calls for the same message arrive in the
+     * same tick
+     * @dependencies
+     * @scenario
+     * - call sign twice for the same message without awaiting the first call
+     * - invoke the queued sign's callback with a successful result
+     * @expected
+     * - signs array should contain only one entry for the message
+     * - both callbacks should have been called with the successful result
+     */
+    it('should add only one entry and call both callbacks when two sign calls for the same message arrive in the same tick', async () => {
+      const cb1 = vi.fn();
+      const cb2 = vi.fn();
+      await Promise.all([
+        signer.callSign('msg', cb1, 'chainCode'),
+        signer.callSign('msg', cb2, 'chainCode'),
+      ]);
+      const entries = signer.getSigns().filter((item) => item.msg === 'msg');
+      expect(entries).toHaveLength(1);
+      entries[0].callback(true, undefined, 'signature', 'signatureRecovery');
+      expect(cb1).toHaveBeenCalledTimes(1);
+      expect(cb1).toHaveBeenCalledWith(
+        true,
+        undefined,
+        'signature',
+        'signatureRecovery',
+      );
+      expect(cb2).toHaveBeenCalledTimes(1);
+      expect(cb2).toHaveBeenCalledWith(
+        true,
+        undefined,
+        'signature',
+        'signatureRecovery',
       );
     });
   });
