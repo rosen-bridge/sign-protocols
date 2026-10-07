@@ -224,21 +224,24 @@ export abstract class TssSigner extends Communicator {
         };
         await this.sendMessage(requestMessage, payload, [], timestamp);
         const release = await this.signAccessMutex.acquire();
-        sign.request = {
-          guards: [...activeGuards],
-          index: await this.getIndex(),
-          timestamp,
-        };
-        sign.signs = Array(this.guardPks.length).fill('');
-        sign.signs[await this.getIndex()] = await this.signPayload(
-          {
-            msg: sign.msg,
-            guards: activeGuards,
-            initGuardIndex: await this.getIndex(),
-          },
-          timestamp,
-        );
-        release();
+        try {
+          sign.request = {
+            guards: [...activeGuards],
+            index: await this.getIndex(),
+            timestamp,
+          };
+          sign.signs = Array(this.guardPks.length).fill('');
+          sign.signs[await this.getIndex()] = await this.signPayload(
+            {
+              msg: sign.msg,
+              guards: activeGuards,
+              initGuardIndex: await this.getIndex(),
+            },
+            timestamp,
+          );
+        } finally {
+          release();
+        }
       }
     }
   };
@@ -279,50 +282,60 @@ export abstract class TssSigner extends Communicator {
     chainCode: string,
     derivationPath?: number[],
   ) => {
-    const signObject = this.getSign(msg, true);
-    if (signObject) {
-      this.logger.info(`Already signing message [${msg}]`);
-      const oldCallback = signObject.callback;
-      signObject.callback = (
-        status: boolean,
-        message?: string,
-        signature?: string,
-        signatureRecovery?: string,
-      ) => {
-        callback(status, message, signature, signatureRecovery);
-        oldCallback(status, message, signature, signatureRecovery);
-      };
-      return;
+    // the duplicate and cache checks must run under the mutex together
+    // with the push: two calls for the same message in the same tick
+    // would otherwise both pass the checks and queue two entries, of
+    // which only the first one's callback is ever called
+    const release = await this.signAccessMutex.acquire();
+    let cachedResult: SignResult | undefined;
+    try {
+      const signObject = this.getSign(msg, true);
+      if (signObject) {
+        this.logger.info(`Already signing message [${msg}]`);
+        const oldCallback = signObject.callback;
+        signObject.callback = (
+          status: boolean,
+          message?: string,
+          signature?: string,
+          signatureRecovery?: string,
+        ) => {
+          callback(status, message, signature, signatureRecovery);
+          oldCallback(status, message, signature, signatureRecovery);
+        };
+        return;
+      }
+
+      if (Object.hasOwn(this.signCache, msg)) {
+        cachedResult = this.signCache[msg]!;
+      } else {
+        this.logger.info(`adding new message [${msg}] to signing queue`);
+        this.signs.push({
+          msg,
+          callback,
+          signs: [],
+          addedTime: this.getDate(),
+          posted: false,
+          chainCode,
+          derivationPath,
+        });
+      }
+    } finally {
+      release();
     }
 
-    if (Object.hasOwn(this.signCache, msg)) {
-      const signResult = this.signCache[msg]!;
-
+    if (cachedResult) {
       this.logger.info(
-        `Using cached signature [${signResult.signature}.${signResult.signatureRecovery}] for message [${msg}]`,
+        `Using cached signature [${cachedResult.signature}.${cachedResult.signatureRecovery}] for message [${msg}]`,
       );
 
       callback(
         true,
         undefined,
-        signResult.signature,
-        signResult.signatureRecovery,
+        cachedResult.signature,
+        cachedResult.signatureRecovery,
       );
       return;
     }
-
-    const release = await this.signAccessMutex.acquire();
-    this.logger.info(`adding new message [${msg}] to signing queue`);
-    this.signs.push({
-      msg,
-      callback,
-      signs: [],
-      addedTime: this.getDate(),
-      posted: false,
-      chainCode,
-      derivationPath,
-    });
-    release();
 
     const pending = this.getPendingSign(msg);
     if (pending) {
