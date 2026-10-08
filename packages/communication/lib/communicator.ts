@@ -142,6 +142,7 @@ export abstract class Communicator {
     senderIndex: number,
     peerId: string,
     timestamp: number,
+    version?: string,
   ) => unknown;
 
   /**
@@ -205,6 +206,7 @@ export abstract class Communicator {
       msg.index,
       peerId,
       msg.timestamp,
+      msg.version,
     );
   };
 

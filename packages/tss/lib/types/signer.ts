@@ -39,6 +39,9 @@ export interface Sign {
     timestamp: number;
   };
   signs: Array<string>;
+  // protocol version of the guard that produced each entry of `signs`,
+  // parallel to it; approvals are signed over the signer's own version
+  signVersions?: Array<string>;
   addedTime: number;
   posted: boolean;
   chainCode: string;
@@ -73,6 +76,8 @@ export interface SignStartPayload {
   msg: string;
   guards: Array<ActiveGuard>;
   signs: Array<string>;
+  // protocol version each entry of `signs` was signed with, parallel to it
+  signVersions?: Array<string>;
 }
 
 export interface PublicKeyID {

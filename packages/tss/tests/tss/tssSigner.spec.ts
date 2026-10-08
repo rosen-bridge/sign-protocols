@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, MockInstance, vi } from 'vitest';
 
+import { Communicator } from '@rosen-bridge/communication';
 import { GuardDetection, ActiveGuard } from '@rosen-bridge/detection';
 import { EdDSA } from '@rosen-bridge/encryption';
 
@@ -646,9 +647,10 @@ describe('TssSigner', () => {
         1,
         'peerId',
         1234,
+        '6.0.2',
       );
       expect(mockedFn).toHaveBeenCalledTimes(1);
-      expect(mockedFn).toHaveBeenCalledWith({}, 'peerId', 1, 'sign');
+      expect(mockedFn).toHaveBeenCalledWith({}, 'peerId', 1, 'sign', '6.0.2');
     });
 
     /**
@@ -1453,6 +1455,7 @@ describe('TssSigner', () => {
           '',
           '',
         ],
+        signVersions: Array(10).fill(''),
       });
     });
 
@@ -2305,6 +2308,105 @@ describe('TssSigner', () => {
       );
       expect(res.length).toEqual(1);
       expect(res).toEqual(guards);
+    });
+
+    /**
+     * @target TssSigner.getApprovedGuards should return selected guard when its approval was signed with a different patch version
+     * @dependencies
+     * @scenario
+     * - sign the approve payload with guard 1's key over a protocol version that differs from the local one only in the patch component
+     * - call function with the signature and the signing guard's version in signVersions
+     * @expected
+     * - returned list must contain entered guard
+     */
+    it('should return selected guard when its approval was signed with a different patch version', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const localVersion = (signer as any).protocolVersion as string;
+      const sections = localVersion.split('.');
+      const otherVersion = `${sections[0]}.${sections[1]}.${
+        Number(sections[2]) + 1
+      }`;
+      const guards = [
+        {
+          publicKey: await guardMessageEncs[1].getPk(),
+          peerId: 'peer-Id1',
+          index: 1,
+        },
+      ];
+      const payload = {
+        guards,
+        msg: 'testing message',
+        initGuardIndex: 1,
+      };
+      const sign = await guardMessageEncs[1].sign(
+        Communicator.generatePayloadToSign(
+          payload,
+          timestamp,
+          guards[0].publicKey,
+          otherVersion,
+        ),
+      );
+      const signs = Array(10).fill('');
+      signs[1] = sign;
+      const signVersions = Array(10).fill('');
+      signVersions[1] = otherVersion;
+      const res = await signer.mockedGetApprovedGuards(
+        timestamp,
+        payload,
+        signs,
+        signVersions,
+      );
+      expect(res.length).toEqual(1);
+      expect(res).toEqual(guards);
+    });
+
+    /**
+     * @target TssSigner.getApprovedGuards should not return selected guard when the recorded signing version does not match the version the approval was signed with
+     * @dependencies
+     * @scenario
+     * - sign the approve payload with guard 1's key over a different patch version
+     * - call function with the signature but the local version recorded in signVersions
+     * @expected
+     * - returned list must be empty
+     */
+    it('should not return selected guard when the recorded signing version does not match the version the approval was signed with', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const localVersion = (signer as any).protocolVersion as string;
+      const sections = localVersion.split('.');
+      const otherVersion = `${sections[0]}.${sections[1]}.${
+        Number(sections[2]) + 1
+      }`;
+      const guards = [
+        {
+          publicKey: await guardMessageEncs[1].getPk(),
+          peerId: 'peer-Id1',
+          index: 1,
+        },
+      ];
+      const payload = {
+        guards,
+        msg: 'testing message',
+        initGuardIndex: 1,
+      };
+      const sign = await guardMessageEncs[1].sign(
+        Communicator.generatePayloadToSign(
+          payload,
+          timestamp,
+          guards[0].publicKey,
+          otherVersion,
+        ),
+      );
+      const signs = Array(10).fill('');
+      signs[1] = sign;
+      const signVersions = Array(10).fill('');
+      signVersions[1] = localVersion;
+      const res = await signer.mockedGetApprovedGuards(
+        timestamp,
+        payload,
+        signs,
+        signVersions,
+      );
+      expect(res.length).toEqual(0);
     });
   });
 

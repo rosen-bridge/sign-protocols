@@ -82,7 +82,8 @@ export class TestTssSigner extends TssSigner {
     timestamp: number,
     payload: SignApprovePayload,
     signs: Array<string>,
-  ) => this.getApprovedGuards(timestamp, payload, signs);
+    signVersions?: Array<string>,
+  ) => this.getApprovedGuards(timestamp, payload, signs, signVersions);
 
   /**
    * calling protected function handleRequestMessage
@@ -119,7 +120,9 @@ export class TestTssSigner extends TssSigner {
     sender: string,
     guardIndex: number,
     signature: string,
-  ) => this.handleApproveMessage(payload, sender, guardIndex, signature);
+    version?: string,
+  ) =>
+    this.handleApproveMessage(payload, sender, guardIndex, signature, version);
 
   /**
    * calling protected function handleSignCachedMessage
