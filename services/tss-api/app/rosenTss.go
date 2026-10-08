@@ -60,19 +60,33 @@ func (r *rosenTss) errorCallBackCall(data interface{}, callBackUrl string) {
 }
 
 func (r *rosenTss) timeOutGoRoutine(operationName string, operationTimeout int, messageId string, errorCh chan error) {
+	// The channel registered for this operation. A later operation that
+	// reuses the same messageId (e.g. a retried sign) registers a new
+	// channel, which is how this goroutine tells the two operations apart.
+	messageCh := r.ChannelMap[messageId]
 	go func() {
-		timeout := time.After(time.Second * time.Duration(operationTimeout))
-		for {
-			select {
-			case <-timeout:
-				if _, ok := r.ChannelMap[messageId]; ok {
-					err := fmt.Errorf("%s operation timeout", operationName)
-					errorCh <- err
-					time.After(time.Second * 4)
-					close(r.ChannelMap[messageId])
-				}
-				return
-			}
+		<-time.After(time.Second * time.Duration(operationTimeout))
+		// The operation may have finished before the timeout fires, and a
+		// new operation may have taken its place under the same messageId.
+		// Only the operation this goroutine was started for may be timed
+		// out; acting on the newer one would fail it early, and sending
+		// the timeout on this operation's (already torn down) error
+		// channel must never happen.
+		current, ok := r.ChannelMap[messageId]
+		if !ok || current != messageCh {
+			return
+		}
+		select {
+		case errorCh <- fmt.Errorf("%s operation timeout", operationName):
+		case <-time.After(time.Second * 4):
+			// The operation stopped receiving errors (it is already
+			// ending); do not block here or touch a newer operation.
+			return
+		}
+		// Close this operation's own channel, never whatever happens to
+		// be registered under the messageId by now.
+		if current, ok := r.ChannelMap[messageId]; ok && current == messageCh {
+			close(messageCh)
 		}
 	}()
 }
@@ -357,7 +371,10 @@ func (r *rosenTss) deleteKeygenInstance(messageId string, channelId string, erro
 	logging.Debugf("deleting %s for channelId %s and messageId %s for keygen operation", operationName, channelId, messageId)
 	delete(r.KeygenOperationMap, channelId)
 	delete(r.ChannelMap, messageId)
-	close(errorCh)
+	// errorCh is deliberately not closed: it has several concurrent
+	// senders (party goroutines, message handlers, the timeout
+	// goroutine) and a late send on a closed channel panics. No receiver
+	// relies on its closure; an abandoned channel is garbage collected.
 	logging.Infof("operation %s removed for channelId %s and messageId %s for keygen operation", operationName, channelId, messageId)
 }
 
@@ -367,7 +384,10 @@ func (r *rosenTss) deleteSignInstance(messageId string, channelId string, errorC
 	logging.Debugf("deleting %s for channelId %s and messageId %s for sign operation", operationName, channelId, messageId)
 	delete(r.SignOperationMap, channelId)
 	delete(r.ChannelMap, messageId)
-	close(errorCh)
+	// errorCh is deliberately not closed: it has several concurrent
+	// senders (party goroutines, message handlers, the timeout
+	// goroutine) and a late send on a closed channel panics. No receiver
+	// relies on its closure; an abandoned channel is garbage collected.
 	logging.Infof("operation %s removed for channelId %s and messageId %s for sign operation", operationName, channelId, messageId)
 }
 
