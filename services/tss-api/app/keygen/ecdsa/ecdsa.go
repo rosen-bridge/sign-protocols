@@ -104,8 +104,16 @@ func (s *operationECDSAKeygen) CreateParty(rosenTss _interface.RosenTss, statusC
 //	- reads new gossip messages from channel and handle it by calling related function in a go routine.
 func (s *operationECDSAKeygen) StartAction(rosenTss _interface.RosenTss, messageCh chan models.GossipMessage, errorCh chan error) error {
 
-	partyStarted := false
 	statusCh := make(chan bool)
+
+	// Create the party before waiting for messages. Doing this in a
+	// `default` branch of the select below kept the loop spinning for the
+	// whole operation, because the select never blocked once the party
+	// existed.
+	if s.LocalTssData.Party == nil {
+		s.CreateParty(rosenTss, statusCh, errorCh)
+		s.Logger.Infof("party is waiting for: %+v", s.LocalTssData.Party.WaitingFor())
+	}
 
 	for {
 		select {
@@ -152,12 +160,6 @@ func (s *operationECDSAKeygen) StartAction(rosenTss _interface.RosenTss, message
 		case end := <-statusCh:
 			if end {
 				return nil
-			}
-		default:
-			if s.LocalTssData.Party == nil && !partyStarted {
-				partyStarted = true
-				s.CreateParty(rosenTss, statusCh, errorCh)
-				s.Logger.Infof("party is waiting for: %+v", s.LocalTssData.Party.WaitingFor())
 			}
 		}
 	}
