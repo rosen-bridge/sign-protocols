@@ -299,6 +299,33 @@ describe('TssSigner', () => {
     });
 
     /**
+     * @target TssSigner.update should not call sendMessage when threshold is not loaded yet
+     * @dependencies
+     * @scenario
+     * - mock activeGuards to return a list of 7 active guard
+     * - mock `Date.now` to return 1686285600 ( a random timestamp when its this guard turn)
+     * - mock updateThreshold to resolve without setting a threshold (tss-api unreachable)
+     * - call update
+     * @expected
+     * - mocked submitMsg must not call
+     */
+    it('should not call sendMessage when threshold is not loaded yet', async () => {
+      vi.setSystemTime(new Date(1686285600608));
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.spyOn(signer as any, 'updateThreshold').mockResolvedValue(undefined);
+      const activeGuards = Array(7)
+        .fill('')
+        .map((item, index) => ({
+          peerId: `peerId-${index}`,
+          publicKey: `publicKey-${index}`,
+          index: index,
+        }));
+      vi.spyOn(detection, 'activeGuards').mockResolvedValue(activeGuards);
+      await signer.update();
+      expect(mockSubmit).not.toBeCalled();
+    });
+
+    /**
      * @target TssSigner.update should call once sendMessage when more than one time called
      * @dependencies
      * @scenario
@@ -310,6 +337,10 @@ describe('TssSigner', () => {
      */
     it('should call once sendMessage when more than one time called', async () => {
       vi.setSystemTime(new Date(1686285600608));
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.spyOn(signer as any, 'updateThreshold').mockResolvedValue(undefined);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (signer as any).threshold = { expiry: 0, value: 7 };
       const activeGuards = Array(7)
         .fill('')
         .map((item, index) => ({
@@ -336,6 +367,10 @@ describe('TssSigner', () => {
      */
     it('should send at most two messages', async () => {
       vi.setSystemTime(new Date(1686285600608));
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.spyOn(signer as any, 'updateThreshold').mockResolvedValue(undefined);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (signer as any).threshold = { expiry: 0, value: 7 };
       const activeGuards = Array(7)
         .fill('')
         .map((item, index) => ({
@@ -371,6 +406,10 @@ describe('TssSigner', () => {
      */
     it('should update signs array', async () => {
       vi.setSystemTime(new Date(1686285600608));
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.spyOn(signer as any, 'updateThreshold').mockResolvedValue(undefined);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (signer as any).threshold = { expiry: 0, value: 7 };
       const activeGuards = Array(7)
         .fill('')
         .map((item, index) => ({
@@ -1417,6 +1456,8 @@ describe('TssSigner', () => {
         index < 6 ? `random signature ${index}` : '',
       );
       const mockedStartSign = vi.spyOn(signer, 'startSign').mockResolvedValue();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (signer as any).threshold = { expiry: 0, value: 7 };
       await signer.mockedHandleApproveMessage(
         {
           msg: 'test message',
@@ -1454,6 +1495,57 @@ describe('TssSigner', () => {
           '',
         ],
       });
+    });
+
+    /**
+     * @target GuardDetection.handleApproveMessage should not call start sign when threshold is not loaded yet
+     * @dependencies
+     * @scenario
+     * - add sign instance to list with valid request and empty list of 6 signatures
+     * - mock getApprovedGuards to return list of 7 guards
+     * - leave threshold unset (tss-api threshold was never loaded)
+     * - mock startSign method
+     * - call handleApproveMessage
+     * @expected
+     * - mockedStartSign must not call
+     * - mockSubmit must not call
+     */
+    it('should not call start sign when threshold is not loaded yet', async () => {
+      activeGuards = await Promise.all(
+        Array(7)
+          .fill('')
+          .map(async (item, index) => ({
+            peerId: `peerId-${index}`,
+            publicKey: await guardMessageEncs[index].getPk(),
+            index: index,
+          })),
+      );
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.spyOn(signer as any, 'getApprovedGuards').mockResolvedValue(
+        activeGuards,
+      );
+      const sign = signer.getSigns()[0];
+      sign.request = {
+        guards: activeGuards,
+        timestamp: timestamp,
+        index: 0,
+      };
+      sign.signs = sign.signs.map((item, index) =>
+        index < 6 ? `random signature ${index}` : '',
+      );
+      const mockedStartSign = vi.spyOn(signer, 'startSign').mockResolvedValue();
+      await signer.mockedHandleApproveMessage(
+        {
+          msg: 'test message',
+          guards: activeGuards,
+          initGuardIndex: 0,
+        },
+        'peerId-2',
+        6,
+        'random signature',
+      );
+      expect(mockedStartSign).toHaveBeenCalledTimes(0);
+      expect(mockSubmit).not.toHaveBeenCalled();
     });
 
     /**
@@ -1775,6 +1867,10 @@ describe('TssSigner', () => {
       vi.spyOn(signer as any, 'getApprovedGuards').mockResolvedValue(
         activeGuards,
       );
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.spyOn(signer as any, 'updateThreshold').mockResolvedValue(undefined);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (signer as any).threshold = { expiry: 0, value: 7 };
       await signer.mockedHandleStartMessage(
         {
           msg: 'signing message',
@@ -1815,6 +1911,40 @@ describe('TssSigner', () => {
       vi.spyOn(signer as any, 'updateThreshold').mockResolvedValue(undefined);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (signer as any).threshold = { expiry: 0, value: 7 };
+      await signer.mockedHandleStartMessage(
+        {
+          msg: 'signing message',
+          guards: activeGuards,
+          signs: Array(10)
+            .fill('')
+            .map((item, index) => (index < 7 ? `signature ${index}` : '')),
+        },
+        timestamp,
+        6,
+        'peerId-6',
+      );
+      expect(mockedStartSign).toHaveBeenCalledTimes(0);
+    });
+
+    /**
+     * @target GuardDetection.handleStartMessage should not call start sign when threshold is not loaded yet
+     * @dependencies
+     * @scenario
+     * - add sign instance to list
+     * - mock startSign
+     * - mock getApprovedGuards to return list of 10 guards
+     * - mock updateThreshold to resolve without setting a threshold (tss-api unreachable)
+     * - call handleStartMessage
+     * @expected
+     * - mockedStartSign must not call
+     */
+    it('should not call start sign when threshold is not loaded yet', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.spyOn(signer as any, 'getApprovedGuards').mockResolvedValue(
+        activeGuards,
+      );
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.spyOn(signer as any, 'updateThreshold').mockResolvedValue(undefined);
       await signer.mockedHandleStartMessage(
         {
           msg: 'signing message',
@@ -2305,6 +2435,35 @@ describe('TssSigner', () => {
       );
       expect(res.length).toEqual(1);
       expect(res).toEqual(guards);
+    });
+
+    /**
+     * @target TssSigner.getApprovedGuards should count a guard listed more than once only once
+     * @dependencies
+     * @scenario
+     * - mock verify sign to return true
+     * - call function with the same guard listed three times and list of random strings as signatures
+     * @expected
+     * - returned list must contain the guard only once
+     */
+    it('should count a guard listed more than once only once', async () => {
+      vi.spyOn(guardMessageEncs[0], 'verify').mockResolvedValue(true);
+      const guard = {
+        publicKey: await guardMessageEncs[0].getPk(),
+        peerId: 'peer-Id1',
+        index: 1,
+      };
+      const res = await signer.mockedGetApprovedGuards(
+        timestamp,
+        {
+          guards: [guard, guard, guard],
+          msg: 'testing message',
+          initGuardIndex: 1,
+        },
+        Array(10).fill('random-signature'),
+      );
+      expect(res.length).toEqual(1);
+      expect(res).toEqual([guard]);
     });
   });
 
