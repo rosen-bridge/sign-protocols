@@ -108,6 +108,12 @@ export enum MessageType {
   SignedTx = 'signedTx',
 }
 
+interface ContributionRequest {
+  readonly txId: string;
+  readonly kind: 'commitment' | 'coordinator-sign' | 'peer-sign';
+  readonly reducedHex: string;
+}
+
 interface ErgoMultiSigConfig {
   logger?: AbstractLogger;
   multiSigUtilsInstance: MultiSigUtils;
@@ -120,9 +126,14 @@ interface ErgoMultiSigConfig {
   guardDetection: GuardDetection;
   commGuardsPk: Array<string>;
   ergoGuardPks?: Array<string>;
+  /** Revalidate external authorization immediately before each secret contribution.
+   * Rejecting terminates this queued signing attempt. Must not reenter the handler.
+   */
+  beforeContribution?: (request: ContributionRequest) => Promise<void>;
 }
 
 export {
+  ContributionRequest,
   TxQueued,
   CommitmentPayload,
   SignPayload,
