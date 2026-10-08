@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"time"
 
 	"rosen-bridge/tss-api/logger"
 	"rosen-bridge/tss-api/models"
@@ -33,6 +35,22 @@ type connect struct {
 
 var logging *zap.SugaredLogger
 
+// httpTimeout bounds every call to the guard. These are small JSON
+// requests to a local service, so 30 seconds is generous; without a
+// timeout a guard that stops answering blocks the caller (e.g. a
+// sign's goroutine, or the error callback reporting its timeout)
+// forever.
+const httpTimeout = 30 * time.Second
+
+// drainAndClose reads the response body to EOF and closes it. Closing
+// alone releases the connection, and draining first lets the transport
+// reuse it; a body that is neither read nor closed keeps its socket
+// and goroutines for the life of the process.
+func drainAndClose(body io.ReadCloser) {
+	_, _ = io.Copy(io.Discard, body)
+	_ = body.Close()
+}
+
 func InitConnection(publishPath string, subscriptionPath string, guardUrl string, getPeerIDPath string, apiKey string) Connection {
 	publishUrl := fmt.Sprintf("%s%s", guardUrl, publishPath)
 	subscriptionUrl := fmt.Sprintf("%s%s", guardUrl, subscriptionPath)
@@ -43,7 +61,7 @@ func InitConnection(publishPath string, subscriptionPath string, guardUrl string
 		subscriptionUrl: subscriptionUrl,
 		getPeerIDUrl:    getPeerIDUrl,
 		apiKey:          apiKey,
-		Client:          &http.Client{},
+		Client:          &http.Client{Timeout: httpTimeout},
 	}
 
 }
@@ -81,6 +99,7 @@ func (c *connect) Publish(msg models.GossipMessage) error {
 		logging.Errorf("error occurred in doing request: %+v", err)
 		return err
 	}
+	defer drainAndClose(resp.Body)
 	type response struct {
 		Message string `json:"message"`
 	}
@@ -139,6 +158,7 @@ func (c *connect) Subscribe(projectUrl string) error {
 		logging.Error(err)
 		return err
 	}
+	defer drainAndClose(resp.Body)
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("not ok response code: {%v}", resp.StatusCode)
 	}
@@ -183,6 +203,7 @@ func (c *connect) CallBack(url string, data interface{}) error {
 		logging.Error(err)
 		return err
 	}
+	defer drainAndClose(resp.Body)
 	if resp.StatusCode != http.StatusOK {
 		err = fmt.Errorf("not ok response code: {%v}", resp.StatusCode)
 		logging.Error(err)
@@ -208,6 +229,7 @@ func (c *connect) GetPeerId() (string, error) {
 		logging.Error(err)
 		return "", err
 	}
+	defer drainAndClose(resp.Body)
 	if resp.StatusCode != http.StatusOK {
 		err = fmt.Errorf("not ok response: {%v}", resp.StatusCode)
 		logging.Error(err)
