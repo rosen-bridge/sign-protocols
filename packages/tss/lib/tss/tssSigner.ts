@@ -230,6 +230,8 @@ export abstract class TssSigner extends Communicator {
           timestamp,
         };
         sign.signs = Array(this.guardPks.length).fill('');
+        sign.signVersions = Array(this.guardPks.length).fill('');
+        sign.signVersions[await this.getIndex()] = this.protocolVersion;
         sign.signs[await this.getIndex()] = await this.signPayload(
           {
             msg: sign.msg,
@@ -369,6 +371,7 @@ export abstract class TssSigner extends Communicator {
    * @param senderIndex
    * @param peerId
    * @param timestamp
+   * @param version protocol version of the sender, as declared in the message envelope
    */
   processMessage = (
     messageType: string,
@@ -377,6 +380,7 @@ export abstract class TssSigner extends Communicator {
     senderIndex: number,
     peerId: string,
     timestamp: number,
+    version?: string,
   ) => {
     switch (messageType as SignMessageType) {
       case requestMessage:
@@ -392,6 +396,7 @@ export abstract class TssSigner extends Communicator {
           peerId,
           senderIndex,
           sign,
+          version,
         );
       case cachedMessage:
         return this.handleSignCachedMessage(
@@ -611,12 +616,14 @@ export abstract class TssSigner extends Communicator {
    * @param sender
    * @param guardIndex
    * @param signature
+   * @param version protocol version of the approving guard, as declared in its message envelope
    */
   protected handleApproveMessage = async (
     payload: SignApprovePayload,
     sender: string,
     guardIndex: number,
     signature: string,
+    version?: string,
   ) => {
     const sign = this.getSign(payload.msg);
     if (!sign) {
@@ -631,6 +638,9 @@ export abstract class TssSigner extends Communicator {
       return await this.signAccessMutex.acquire().then(async (release) => {
         try {
           sign.signs[guardIndex] = signature;
+          if (!sign.signVersions)
+            sign.signVersions = Array(this.guardPks.length).fill('');
+          sign.signVersions[guardIndex] = version ?? '';
           const approvedGuards = await this.getApprovedGuards(
             sign.request!.timestamp,
             {
@@ -639,12 +649,14 @@ export abstract class TssSigner extends Communicator {
               initGuardIndex: await this.getIndex(),
             },
             sign.signs,
+            sign.signVersions,
           );
           if (approvedGuards.length >= this.threshold.value) {
             if (this.getSign(payload.msg)) {
               const payload: SignStartPayload = {
                 msg: sign.msg,
                 signs: sign.signs,
+                signVersions: sign.signVersions,
                 guards: sign.request!.guards,
               };
               await this.sendMessage(
@@ -766,6 +778,7 @@ export abstract class TssSigner extends Communicator {
       timestamp,
       payloadToSign,
       payload.signs,
+      payload.signVersions,
     );
     if (approvedGuards.length >= this.threshold.value) {
       await this.signAccessMutex.acquire().then(async (release) => {
@@ -778,14 +791,19 @@ export abstract class TssSigner extends Communicator {
   /**
    * process list of selected guards and list of signs
    * then return list of all approved guards
+   * each approval was signed over the approving guard's own protocol
+   * version, so it is verified with the version recorded for that guard
+   * in `signVersions` (falling back to the local version when unknown)
    * @param timestamp
    * @param payload
    * @param signs
+   * @param signVersions protocol version each sign was signed with, parallel to signs
    */
   protected getApprovedGuards = async (
     timestamp: number,
     payload: SignApprovePayload,
     signs: Array<string>,
+    signVersions?: Array<string>,
   ): Promise<Array<ActiveGuard>> => {
     return (
       await Promise.all(
@@ -799,7 +817,9 @@ export abstract class TssSigner extends Communicator {
               payload,
               timestamp,
               guard.publicKey,
-              this.protocolVersion,
+              signVersions?.[index]
+                ? signVersions[index]
+                : this.protocolVersion,
             ),
             sign,
             guard.publicKey,

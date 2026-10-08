@@ -185,6 +185,7 @@ describe('Communicator', () => {
         2,
         'guardIndex2',
         currentTime,
+        protocolVersion,
       );
     });
 
