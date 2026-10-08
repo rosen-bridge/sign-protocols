@@ -65,7 +65,7 @@ func (s *operationECDSASign) Init(rosenTss _interface.RosenTss, peers []models.P
 //	- creates end and out channel for party,
 //	- calls StartParty function of protocol
 //	- handles end channel and out channel in a go routine
-func (s *operationECDSASign) CreateParty(rosenTss _interface.RosenTss, statusCh chan bool, errorCh chan error) {
+func (s *operationECDSASign) CreateParty(rosenTss _interface.RosenTss, statusCh chan bool, errorCh chan error) error {
 	s.Logger.Info("creating and starting party")
 
 	outCh := make(chan tss.Message, len(s.LocalTssData.PartyIds))
@@ -74,15 +74,18 @@ func (s *operationECDSASign) CreateParty(rosenTss _interface.RosenTss, statusCh 
 	ecdsaMetaData, err := rosenTss.GetMetaData(models.ECDSA)
 	if err != nil {
 		s.Logger.Errorf("there was an error in getting metadata: %+v", err)
-		errorCh <- err
-		return
+		return err
+	}
+
+	if err := utils.ValidatePartyIds(s.LocalTssData.PartyIds, ecdsaMetaData.Threshold); err != nil {
+		s.Logger.Errorf("invalid party list: %+v", err)
+		return err
 	}
 
 	err = s.StartParty(&s.LocalTssData, ecdsaMetaData.Threshold, s.SignMessage, outCh, endCh)
 	if err != nil {
 		s.Logger.Errorf("there was an error in starting party: %+v", err)
-		errorCh <- err
-		return
+		return err
 	}
 
 	s.Logger.Debugf("party info: %v ", s.LocalTssData.Party)
@@ -104,6 +107,7 @@ func (s *operationECDSASign) CreateParty(rosenTss _interface.RosenTss, statusCh 
 			return
 		}
 	}()
+	return nil
 }
 
 //	- reads new gossip messages from channel and handle it by calling related function in a go routine.
@@ -161,7 +165,9 @@ func (s *operationECDSASign) StartAction(rosenTss _interface.RosenTss, messageCh
 		default:
 			if s.LocalTssData.Party == nil && !partyStarted {
 				partyStarted = true
-				s.CreateParty(rosenTss, statusCh, errorCh)
+				if err := s.CreateParty(rosenTss, statusCh, errorCh); err != nil {
+					return err
+				}
 				s.Logger.Infof("party is waiting for: %+v", s.LocalTssData.Party.WaitingFor())
 			}
 		}
