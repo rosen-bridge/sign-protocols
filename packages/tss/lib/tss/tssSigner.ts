@@ -198,6 +198,12 @@ export abstract class TssSigner extends Communicator {
       return;
     }
     await this.updateThreshold();
+    if (this.threshold.value < 1) {
+      this.logger.debug(
+        'threshold is not loaded yet, skipping this round of signing',
+      );
+      return;
+    }
     const activeGuards = await this.detection.activeGuards();
     if (activeGuards.length < this.threshold.value) {
       this.logger.debug(
@@ -640,7 +646,10 @@ export abstract class TssSigner extends Communicator {
             },
             sign.signs,
           );
-          if (approvedGuards.length >= this.threshold.value) {
+          if (
+            this.threshold.value >= 1 &&
+            approvedGuards.length >= this.threshold.value
+          ) {
             if (this.getSign(payload.msg)) {
               const payload: SignStartPayload = {
                 msg: sign.msg,
@@ -762,6 +771,13 @@ export abstract class TssSigner extends Communicator {
       );
       return;
     }
+    await this.updateThreshold();
+    if (this.threshold.value < 1) {
+      this.logger.warn(
+        `Got a request to sign message from [${sender}] but the threshold is not loaded yet`,
+      );
+      return;
+    }
     const approvedGuards = await this.getApprovedGuards(
       timestamp,
       payloadToSign,
@@ -787,9 +803,17 @@ export abstract class TssSigner extends Communicator {
     payload: SignApprovePayload,
     signs: Array<string>,
   ): Promise<Array<ActiveGuard>> => {
+    // a guard listed more than once in the payload must count only once:
+    // its approval is the same signature, verified against the same index
+    const uniqueGuards = payload.guards.filter(
+      (guard, index) =>
+        payload.guards.findIndex(
+          (item) => item.publicKey === guard.publicKey,
+        ) === index,
+    );
     return (
       await Promise.all(
-        payload.guards.map(async (guard) => {
+        uniqueGuards.map(async (guard) => {
           const index = this.guardPks.indexOf(guard.publicKey);
           if (index === -1) return undefined;
           const sign = signs[index];
