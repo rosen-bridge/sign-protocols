@@ -29,7 +29,6 @@ type rosenTss struct {
 	ChannelMap         map[string]chan models.GossipMessage
 	KeygenOperationMap map[string]_interface.KeygenOperation
 	SignOperationMap   map[string]_interface.SignOperation
-	signClassMap       map[string]string
 	eddsaMetaData      models.MetaData
 	ecdsaMetaData      models.MetaData
 	storage            storage.Storage
@@ -48,7 +47,6 @@ func NewRosenTss(connection network.Connection, storage storage.Storage, config 
 		ChannelMap:         make(map[string]chan models.GossipMessage),
 		KeygenOperationMap: make(map[string]_interface.KeygenOperation),
 		SignOperationMap:   make(map[string]_interface.SignOperation),
-		signClassMap:       make(map[string]string),
 		eddsaMetaData:      models.MetaData{},
 		ecdsaMetaData:      models.MetaData{},
 		storage:            storage,
@@ -387,9 +385,8 @@ func (r *rosenTss) GetSignOperations() map[string]_interface.SignOperation {
 	return operations
 }
 
-// Reservations publish the communication channel and its operation together.
+// reserveKeygenInstance atomically checks conflicts and registers the keygen operation and its channel.
 func (r *rosenTss) reserveKeygenInstance(messageId string, channelId string, messageCh chan models.GossipMessage, operation _interface.KeygenOperation) error {
-	// Class lookup can execute operation code, so resolve it before taking the registry lock.
 	var signClass string
 	switch operation.GetClassName() {
 	case models.ECDSA + "Keygen":
@@ -403,8 +400,8 @@ func (r *rosenTss) reserveKeygenInstance(messageId string, channelId string, mes
 		return fmt.Errorf(models.DuplicatedMessageIdError)
 	}
 	if signClass != "" {
-		for _, activeClass := range r.signClassMap {
-			if activeClass == signClass {
+		for _, activeOperation := range r.SignOperationMap {
+			if activeOperation.GetClassName() == signClass {
 				return fmt.Errorf("%s "+models.OperationIsRunningError, signClass)
 			}
 		}
@@ -414,9 +411,8 @@ func (r *rosenTss) reserveKeygenInstance(messageId string, channelId string, mes
 	return nil
 }
 
+// reserveSignInstance atomically checks conflicts and registers the signing operation and its channel.
 func (r *rosenTss) reserveSignInstance(messageId string, channelId string, messageCh chan models.GossipMessage, operation _interface.SignOperation) error {
-	// Keep the exact class as reservation metadata; channelId also contains
-	// caller-provided chain code and cannot be parsed as an operation class.
 	className := operation.GetClassName()
 	var keygenClass string
 	switch className {
@@ -437,11 +433,9 @@ func (r *rosenTss) reserveSignInstance(messageId string, channelId string, messa
 	}
 	r.ChannelMap[messageId] = messageCh
 	r.SignOperationMap[channelId] = operation
-	r.signClassMap[channelId] = className
 	return nil
 }
 
-// removes operation and related channel from list
 // removes operation and related channel for Keygen operation
 func (r *rosenTss) deleteKeygenInstance(messageId string, channelId string, messageCh chan models.GossipMessage, operation _interface.KeygenOperation) {
 	operationName := operation.GetClassName()
@@ -465,7 +459,6 @@ func (r *rosenTss) deleteSignInstance(messageId string, channelId string, messag
 		return
 	}
 	delete(r.SignOperationMap, channelId)
-	delete(r.signClassMap, channelId)
 	delete(r.ChannelMap, messageId)
 	r.registryMu.Unlock()
 	logging.Infof("operation %s removed for channelId %s and messageId %s for sign operation", operationName, channelId, messageId)
