@@ -44,7 +44,7 @@ func NewTssController(rosenTss _interface.RosenTss) TssController {
 //	check if there is any common operation between forbidden and running ones.
 func (tssController *tssController) checkKeygenOperation(crypto string) error {
 	forbiddenOperations := []string{crypto + "Sign", crypto + "Regroup"}
-	operations := tssController.rosenTss.GetKeygenOperations()
+	operations := tssController.rosenTss.GetSignOperations()
 	for _, operation := range operations {
 		for _, forbidden := range forbiddenOperations {
 			if operation.GetClassName() == forbidden {
@@ -65,7 +65,7 @@ func (tssController *tssController) Validate(i interface{}) error {
 //	check if there is any common operation between forbidden and running ones.
 func (tssController *tssController) checkSignOperation(crypto string) error {
 	forbiddenOperations := []string{crypto + "Keygen", crypto + "Regroup"}
-	operations := tssController.rosenTss.GetSignOperations()
+	operations := tssController.rosenTss.GetKeygenOperations()
 	for _, operation := range operations {
 		for _, forbidden := range forbiddenOperations {
 			if operation.GetClassName() == forbidden {
@@ -77,6 +77,8 @@ func (tssController *tssController) checkSignOperation(crypto string) error {
 }
 
 //	check if there is any common operation between forbidden and running ones.
+// These checks are advisory; reserveKeygenInstance and reserveSignInstance enforce admission atomically.
+// TODO: Add regroup conflicts to reserve*Instance when regroup is implemented.
 func (tssController *tssController) checkOperation(operationName string, crypto string) error {
 	switch operationName {
 	case "keygen":
@@ -107,7 +109,7 @@ func (tssController *tssController) Keygen() echo.HandlerFunc {
 		err = tssController.rosenTss.StartNewKeygen(data)
 		if err != nil {
 			switch err.Error() {
-			case models.DuplicatedMessageIdError:
+			case models.DuplicatedMessageIdError, fmt.Sprintf("%s "+models.OperationIsRunningError, data.Crypto+"Sign"):
 				return echo.NewHTTPError(http.StatusConflict, err.Error())
 			case models.KeygenFileExistError, models.WrongCryptoProtocolError:
 				return echo.NewHTTPError(http.StatusBadRequest, err.Error())
@@ -142,7 +144,7 @@ func (tssController *tssController) Sign() echo.HandlerFunc {
 		err = tssController.rosenTss.StartNewSign(data)
 		if err != nil {
 			switch err.Error() {
-			case models.DuplicatedMessageIdError:
+			case models.DuplicatedMessageIdError, fmt.Sprintf("%s "+models.OperationIsRunningError, data.Crypto+"Keygen"):
 				return echo.NewHTTPError(http.StatusConflict, err.Error())
 			case
 				models.ECDSANoKeygenDataFoundError,

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"os"
 	ecdsaKeygen "rosen-bridge/tss-api/app/keygen/ecdsa"
 	eddsaKeygen "rosen-bridge/tss-api/app/keygen/eddsa"
+	"sync"
 	"time"
 
 	"go.uber.org/zap"
@@ -23,6 +25,7 @@ import (
 )
 
 type rosenTss struct {
+	registryMu         sync.RWMutex
 	ChannelMap         map[string]chan models.GossipMessage
 	KeygenOperationMap map[string]_interface.KeygenOperation
 	SignOperationMap   map[string]_interface.SignOperation
@@ -37,7 +40,7 @@ type rosenTss struct {
 
 var logging *zap.SugaredLogger
 
-//	Constructor of an app
+// Constructor of an app
 func NewRosenTss(connection network.Connection, storage storage.Storage, config models.Config) _interface.RosenTss {
 	logging = logger.NewSugar("app")
 	return &rosenTss{
@@ -59,27 +62,34 @@ func (r *rosenTss) errorCallBackCall(data interface{}, callBackUrl string) {
 	}
 }
 
-func (r *rosenTss) timeOutGoRoutine(operationName string, operationTimeout int, messageId string, errorCh chan error) {
+func (r *rosenTss) timeOutGoRoutine(operationName string, operationTimeout int, errorCh chan error) func() {
+	ctx, cancel := context.WithCancel(context.Background())
+	finished := make(chan struct{})
 	go func() {
-		timeout := time.After(time.Second * time.Duration(operationTimeout))
-		for {
+		defer close(finished)
+		timer := time.NewTimer(time.Second * time.Duration(operationTimeout))
+		defer timer.Stop()
+		select {
+		case <-ctx.Done():
+		case <-timer.C:
 			select {
-			case <-timeout:
-				if _, ok := r.ChannelMap[messageId]; ok {
-					err := fmt.Errorf("%s operation timeout", operationName)
-					errorCh <- err
-					time.After(time.Second * 4)
-					close(r.ChannelMap[messageId])
-				}
-				return
+			case errorCh <- fmt.Errorf("%s operation timeout", operationName):
+			case <-ctx.Done():
 			}
 		}
 	}()
+	return func() {
+		cancel()
+		<-finished
+	}
 }
 
 // StartNewKeygen starts keygen scenario for app based on given protocol.
 func (r *rosenTss) StartNewKeygen(keygenMessage models.KeygenMessage) error {
 	logging.Info("Starting New keygen process")
+	if keygenMessage.Crypto != models.ECDSA && keygenMessage.Crypto != models.EDDSA {
+		return fmt.Errorf(models.WrongCryptoProtocolError)
+	}
 
 	path := fmt.Sprintf("%s/%s/%s", r.GetPeerHome(), keygenMessage.Crypto, "keygen_data.json")
 	if _, err := os.Stat(path); err == nil {
@@ -87,14 +97,13 @@ func (r *rosenTss) StartNewKeygen(keygenMessage models.KeygenMessage) error {
 	}
 
 	messageId := fmt.Sprintf("%s%s", keygenMessage.Crypto, "Keygen")
-	_, ok := r.ChannelMap[messageId]
-	if !ok {
-		messageCh := make(chan models.GossipMessage, 100)
-		r.ChannelMap[messageId] = messageCh
-		logging.Infof("creating new channel in StartNewKeygen: %v", messageId)
-	} else {
+	r.registryMu.RLock()
+	_, exists := r.ChannelMap[messageId]
+	r.registryMu.RUnlock()
+	if exists {
 		return fmt.Errorf(models.DuplicatedMessageIdError)
 	}
+	messageCh := make(chan models.GossipMessage, 100)
 
 	var operation _interface.KeygenOperation
 	switch keygenMessage.Crypto {
@@ -106,18 +115,28 @@ func (r *rosenTss) StartNewKeygen(keygenMessage models.KeygenMessage) error {
 		return fmt.Errorf(models.WrongCryptoProtocolError)
 	}
 	channelId := operation.GetClassName()
-	r.KeygenOperationMap[channelId] = operation
+	if err := r.reserveKeygenInstance(messageId, channelId, messageCh, operation); err != nil {
+		return err
+	}
+	logging.Infof("creating new channel in StartNewKeygen: %v", messageId)
 
-	errorCh := make(chan error)
-	r.timeOutGoRoutine(operation.GetClassName(), keygenMessage.OperationTimeout, messageId, errorCh)
+	errorCh := make(chan error, 1)
+	cancelTimeout := r.timeOutGoRoutine(operation.GetClassName(), keygenMessage.OperationTimeout, errorCh)
 
 	err := operation.Init(r, keygenMessage.P2PIDs)
 	if err != nil {
+		cancelTimeout()
+		r.deleteKeygenInstance(messageId, channelId, messageCh, operation)
 		return err
 	}
 	go func() {
+		defer func() {
+			cancelTimeout()
+			r.deleteKeygenInstance(messageId, channelId, messageCh, operation)
+		}()
 		logging.Infof("calling start action for %s keygen", keygenMessage.Crypto)
-		err = operation.StartAction(r, r.ChannelMap[messageId], errorCh)
+		err = operation.StartAction(r, messageCh, errorCh)
+		cancelTimeout()
 		if err != nil {
 			logging.Errorf("an error occurred in %s keygen action, err: %+v", keygenMessage.Crypto, err)
 			data := models.FailKeygenData{
@@ -126,7 +145,6 @@ func (r *rosenTss) StartNewKeygen(keygenMessage models.KeygenMessage) error {
 			}
 			r.errorCallBackCall(data, keygenMessage.CallBackUrl)
 		}
-		r.deleteInstance("keygen", messageId, channelId, errorCh)
 		logging.Infof("end of %s keygen action", keygenMessage.Crypto)
 		return
 	}()
@@ -134,50 +152,62 @@ func (r *rosenTss) StartNewKeygen(keygenMessage models.KeygenMessage) error {
 	return nil
 }
 
-//	starts sign scenario for app based on given protocol.
+// starts sign scenario for app based on given protocol.
 func (r *rosenTss) StartNewSign(signMessage models.SignMessage) error {
 	logging.Info("Starting New Sign process")
+	if signMessage.Crypto != models.ECDSA && signMessage.Crypto != models.EDDSA {
+		return fmt.Errorf(models.WrongCryptoProtocolError)
+	}
+	if signMessage.Crypto == models.ECDSA && len(signMessage.DerivationPath) == 0 {
+		return fmt.Errorf(models.WrongDerivationPathError)
+	}
 	msgBytes, _ := utils.HexDecoder(signMessage.Message)
 	signDataBytes := blake2b.Sum256(msgBytes)
 	signDataHash := utils.HexEncoder(signDataBytes[:])
 	logging.Infof("encoded sign data: %v", signDataHash)
 
 	messageId := fmt.Sprintf("%s%s", signMessage.Crypto, signDataHash)
-	_, ok := r.ChannelMap[messageId]
-	if !ok {
-		messageCh := make(chan models.GossipMessage, 100)
-		r.ChannelMap[messageId] = messageCh
-		logging.Infof("new communication channel for signning process: %v", messageId)
-	} else {
+	r.registryMu.RLock()
+	_, exists := r.ChannelMap[messageId]
+	r.registryMu.RUnlock()
+	if exists {
 		return fmt.Errorf(models.DuplicatedMessageIdError)
 	}
+	messageCh := make(chan models.GossipMessage, 100)
 
 	var operation _interface.SignOperation
 	switch signMessage.Crypto {
 	case models.EDDSA:
 		operation = eddsaSign.NewSignEDDSAOperation(signMessage)
 	case models.ECDSA:
-		if len(signMessage.DerivationPath) == 0 {
-			return fmt.Errorf(models.WrongDerivationPathError)
-		}
 		operation = ecdsaSign.NewSignECDSAOperation(signMessage)
 	default:
 		return fmt.Errorf(models.WrongCryptoProtocolError)
 	}
 
 	channelId := fmt.Sprintf("%s%s%s", operation.GetClassName(), signMessage.ChainCode, messageId)
-	r.SignOperationMap[channelId] = operation
+	if err := r.reserveSignInstance(messageId, channelId, messageCh, operation); err != nil {
+		return err
+	}
+	logging.Infof("new communication channel for signning process: %v", messageId)
 
-	errorCh := make(chan error)
-	r.timeOutGoRoutine(operation.GetClassName(), signMessage.OperationTimeout, messageId, errorCh)
+	errorCh := make(chan error, 1)
+	cancelTimeout := r.timeOutGoRoutine(operation.GetClassName(), signMessage.OperationTimeout, errorCh)
 
 	err := operation.Init(r, signMessage.Peers)
 	if err != nil {
+		cancelTimeout()
+		r.deleteSignInstance(messageId, channelId, messageCh, operation)
 		return err
 	}
 	go func() {
+		defer func() {
+			cancelTimeout()
+			r.deleteSignInstance(messageId, channelId, messageCh, operation)
+		}()
 		logging.Infof("calling start action for %s sign", signMessage.Crypto)
-		err = operation.StartAction(r, r.ChannelMap[messageId], errorCh)
+		err = operation.StartAction(r, messageCh, errorCh)
+		cancelTimeout()
 		if err != nil {
 			logging.Errorf("an error occurred in %s sign action, err: %+v", signMessage.Crypto, err)
 			data := models.SignData{
@@ -187,7 +217,6 @@ func (r *rosenTss) StartNewSign(signMessage models.SignMessage) error {
 			}
 			r.errorCallBackCall(data, signMessage.CallBackUrl)
 		}
-		r.deleteInstance("sign", messageId, channelId, errorCh)
 		logging.Infof("end of %s sign action", signMessage.Crypto)
 		return
 	}()
@@ -195,7 +224,7 @@ func (r *rosenTss) StartNewSign(signMessage models.SignMessage) error {
 	return nil
 }
 
-//	GetPublicKey get the compressed public key of crypto
+// GetPublicKey get the compressed public key of crypto
 func (r *rosenTss) GetPublicKey(pkData models.GetPublicKey) (string, error) {
 	switch pkData.Crypto {
 	case models.EDDSA:
@@ -230,7 +259,7 @@ func (r *rosenTss) GetPublicKey(pkData models.GetPublicKey) (string, error) {
 	}
 }
 
-//	handles the receiving message from message route
+// handles the receiving message from message route
 func (r *rosenTss) MessageHandler(message models.Message) error {
 
 	msgBytes := []byte(message.Message)
@@ -260,8 +289,11 @@ func (r *rosenTss) MessageHandler(message models.Message) error {
 				logging.Warnf("message timeout, channel not found: %+v", gossipMsg.MessageId)
 				break
 			}
-			if _, ok := r.ChannelMap[gossipMsg.MessageId]; ok {
-				send(r.ChannelMap[gossipMsg.MessageId], gossipMsg)
+			r.registryMu.RLock()
+			messageCh, ok := r.ChannelMap[gossipMsg.MessageId]
+			r.registryMu.RUnlock()
+			if ok {
+				send(messageCh, gossipMsg)
 				break
 			}
 			time.Sleep(time.Millisecond * time.Duration(r.Config.WriteMsgRetryTime))
@@ -270,17 +302,17 @@ func (r *rosenTss) MessageHandler(message models.Message) error {
 	return nil
 }
 
-//	returns the storage
+// returns the storage
 func (r *rosenTss) GetStorage() storage.Storage {
 	return r.storage
 }
 
-//	returns the connection
+// returns the connection
 func (r *rosenTss) GetConnection() network.Connection {
 	return r.connection
 }
 
-//	setups peer home address and creates that
+// setups peer home address and creates that
 func (r *rosenTss) SetPeerHome(homeAddress string) error {
 	logging.Info("setting up home directory")
 
@@ -292,12 +324,12 @@ func (r *rosenTss) SetPeerHome(homeAddress string) error {
 	return nil
 }
 
-//	returns the peer's home
+// returns the peer's home
 func (r *rosenTss) GetPeerHome() string {
 	return r.peerHome
 }
 
-//	setting ups metadata from given file in the home directory
+// setting ups metadata from given file in the home directory
 func (r *rosenTss) SetMetaData(meta models.MetaData, crypto string) error {
 	switch crypto {
 	case models.EDDSA:
@@ -311,7 +343,7 @@ func (r *rosenTss) SetMetaData(meta models.MetaData, crypto string) error {
 	}
 }
 
-//	returns peer's meta data
+// returns peer's meta data
 func (r *rosenTss) GetMetaData(crypto string) (models.MetaData, error) {
 	switch crypto {
 	case models.EDDSA:
@@ -331,47 +363,108 @@ func (r *rosenTss) GetMetaData(crypto string) (models.MetaData, error) {
 	}
 }
 
-//	returns list of operations
+// returns list of operations
 func (r *rosenTss) GetKeygenOperations() map[string]_interface.KeygenOperation {
-	return r.KeygenOperationMap
-}
-
-//	returns list of operations
-func (r *rosenTss) GetSignOperations() map[string]_interface.SignOperation {
-	return r.SignOperationMap
-}
-
-//	removes operation and related channel from list
-func (r *rosenTss) deleteInstance(operationType string, messageId string, channelId string, errorCh chan error) {
-	switch operationType {
-	case "keygen":
-		r.deleteKeygenInstance(messageId, channelId, errorCh)
-	case "sign":
-		r.deleteSignInstance(messageId, channelId, errorCh)
+	r.registryMu.RLock()
+	defer r.registryMu.RUnlock()
+	operations := make(map[string]_interface.KeygenOperation, len(r.KeygenOperationMap))
+	for id, operation := range r.KeygenOperationMap {
+		operations[id] = operation
 	}
+	return operations
 }
 
-//	removes operation and related channel for Keygen operation
-func (r *rosenTss) deleteKeygenInstance(messageId string, channelId string, errorCh chan error) {
-	operationName := r.KeygenOperationMap[channelId].GetClassName()
-	logging.Debugf("deleting %s for channelId %s and messageId %s for keygen operation", operationName, channelId, messageId)
+// returns list of operations
+func (r *rosenTss) GetSignOperations() map[string]_interface.SignOperation {
+	r.registryMu.RLock()
+	defer r.registryMu.RUnlock()
+	operations := make(map[string]_interface.SignOperation, len(r.SignOperationMap))
+	for id, operation := range r.SignOperationMap {
+		operations[id] = operation
+	}
+	return operations
+}
+
+// reserveKeygenInstance atomically checks conflicts and registers the keygen operation and its channel.
+func (r *rosenTss) reserveKeygenInstance(messageId string, channelId string, messageCh chan models.GossipMessage, operation _interface.KeygenOperation) error {
+	var signClass string
+	switch operation.GetClassName() {
+	case models.ECDSA + "Keygen":
+		signClass = models.ECDSA + "Sign"
+	case models.EDDSA + "Keygen":
+		signClass = models.EDDSA + "Sign"
+	}
+	r.registryMu.Lock()
+	defer r.registryMu.Unlock()
+	if _, ok := r.ChannelMap[messageId]; ok {
+		return fmt.Errorf(models.DuplicatedMessageIdError)
+	}
+	if signClass != "" {
+		for _, activeOperation := range r.SignOperationMap {
+			if activeOperation.GetClassName() == signClass {
+				return fmt.Errorf("%s "+models.OperationIsRunningError, signClass)
+			}
+		}
+	}
+	r.ChannelMap[messageId] = messageCh
+	r.KeygenOperationMap[channelId] = operation
+	return nil
+}
+
+// reserveSignInstance atomically checks conflicts and registers the signing operation and its channel.
+func (r *rosenTss) reserveSignInstance(messageId string, channelId string, messageCh chan models.GossipMessage, operation _interface.SignOperation) error {
+	className := operation.GetClassName()
+	var keygenClass string
+	switch className {
+	case models.ECDSA + "Sign":
+		keygenClass = models.ECDSA + "Keygen"
+	case models.EDDSA + "Sign":
+		keygenClass = models.EDDSA + "Keygen"
+	}
+	r.registryMu.Lock()
+	defer r.registryMu.Unlock()
+	if _, ok := r.ChannelMap[messageId]; ok {
+		return fmt.Errorf(models.DuplicatedMessageIdError)
+	}
+	if keygenClass != "" {
+		if _, ok := r.KeygenOperationMap[keygenClass]; ok {
+			return fmt.Errorf("%s "+models.OperationIsRunningError, keygenClass)
+		}
+	}
+	r.ChannelMap[messageId] = messageCh
+	r.SignOperationMap[channelId] = operation
+	return nil
+}
+
+// removes operation and related channel for Keygen operation
+func (r *rosenTss) deleteKeygenInstance(messageId string, channelId string, messageCh chan models.GossipMessage, operation _interface.KeygenOperation) {
+	operationName := operation.GetClassName()
+	r.registryMu.Lock()
+	if r.ChannelMap[messageId] != messageCh || r.KeygenOperationMap[channelId] != operation {
+		r.registryMu.Unlock()
+		return
+	}
 	delete(r.KeygenOperationMap, channelId)
 	delete(r.ChannelMap, messageId)
-	close(errorCh)
+	r.registryMu.Unlock()
 	logging.Infof("operation %s removed for channelId %s and messageId %s for keygen operation", operationName, channelId, messageId)
 }
 
-//	removes operation and related channel for sign Operation
-func (r *rosenTss) deleteSignInstance(messageId string, channelId string, errorCh chan error) {
-	operationName := r.SignOperationMap[channelId].GetClassName()
-	logging.Debugf("deleting %s for channelId %s and messageId %s for sign operation", operationName, channelId, messageId)
+// removes operation and related channel for sign Operation
+func (r *rosenTss) deleteSignInstance(messageId string, channelId string, messageCh chan models.GossipMessage, operation _interface.SignOperation) {
+	operationName := operation.GetClassName()
+	r.registryMu.Lock()
+	if r.ChannelMap[messageId] != messageCh || r.SignOperationMap[channelId] != operation {
+		r.registryMu.Unlock()
+		return
+	}
 	delete(r.SignOperationMap, channelId)
 	delete(r.ChannelMap, messageId)
-	close(errorCh)
+	r.registryMu.Unlock()
 	logging.Infof("operation %s removed for channelId %s and messageId %s for sign operation", operationName, channelId, messageId)
 }
 
-//	set p2p to the variable
+// set p2p to the variable
 func (r *rosenTss) SetP2pId() error {
 	p2pId, err := r.GetConnection().GetPeerId()
 	if err != nil {
@@ -381,12 +474,12 @@ func (r *rosenTss) SetP2pId() error {
 	return nil
 }
 
-//	get p2pId
+// get p2pId
 func (r *rosenTss) GetP2pId() string {
 	return r.P2pId
 }
 
-//	get Config
+// get Config
 func (r *rosenTss) GetConfig() models.Config {
 	return r.Config
 }

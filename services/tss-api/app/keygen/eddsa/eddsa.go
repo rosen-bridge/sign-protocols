@@ -67,14 +67,21 @@ func (s *operationEDDSAKeygen) CreateParty(rosenTss _interface.RosenTss, statusC
 	metaData, err := rosenTss.GetMetaData(models.EDDSA)
 	if err != nil {
 		s.Logger.Errorf("there was an error in getting metadata: %+v", err)
-		errorCh <- err
+		// StartAction reads this channel after CreateParty returns; a timeout may already be queued.
+		select {
+		case errorCh <- err:
+		default:
+		}
 		return
 	}
 
 	err = s.StartParty(&s.LocalTssData, metaData.Threshold, outCh, endCh)
 	if err != nil {
 		s.Logger.Errorf("there was an error in starting party: %+v", err)
-		errorCh <- err
+		select {
+		case errorCh <- err:
+		default:
+		}
 		return
 	}
 
@@ -155,7 +162,9 @@ func (s *operationEDDSAKeygen) StartAction(rosenTss _interface.RosenTss, message
 			if s.LocalTssData.Party == nil && !partyStarted {
 				partyStarted = true
 				s.CreateParty(rosenTss, statusCh, errorCh)
-				s.Logger.Infof("party is waiting for: %+v", s.LocalTssData.Party.WaitingFor())
+				if s.LocalTssData.Party != nil {
+					s.Logger.Infof("party is waiting for: %+v", s.LocalTssData.Party.WaitingFor())
+				}
 			}
 		}
 	}
