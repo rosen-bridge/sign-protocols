@@ -2,4 +2,12 @@
 'tss-api': patch
 ---
 
-Serialize key-generation and signing admission, protect operation registries during concurrent access, and preserve operation ownership during cleanup. Return HTTP 409 when key-generation and signing reservations for the same protocol conflict. Validate protocol and derivation-path prerequisites before registration, and cancel and join timeout goroutines when initialization fails or an operation ends. Buffer operation errors to avoid CreateParty self-deadlocks, preserve a queued terminal error without blocking failed initialization, and skip party-status logging when initialization fails before a party is assigned.
+Fix race conditions and crashes in TSS operation handling
+
+- Reject keygen and sign for the same crypto running at once (HTTP 409)
+- Make duplicate-request checks and registration atomic
+- Protect operation and channel maps with a lock
+- Validate crypto and derivation path before registering an operation
+- Cancel the timeout goroutine when an operation ends or fails to start
+- Stop closing the error channel on cleanup, which could crash the process
+- Prevent CreateParty errors from deadlocking or crashing the operation
