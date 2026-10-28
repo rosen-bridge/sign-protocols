@@ -77,12 +77,14 @@ export class TestTssSigner extends TssSigner {
    * @param timestamp
    * @param payload
    * @param signs
+   * @param versions
    */
   mockedGetApprovedGuards = (
     timestamp: number,
     payload: SignApprovePayload,
     signs: Array<string>,
-  ) => this.getApprovedGuards(timestamp, payload, signs);
+    versions?: Array<string>,
+  ) => this.getApprovedGuards(timestamp, payload, signs, versions);
 
   /**
    * calling protected function handleRequestMessage
@@ -113,13 +115,16 @@ export class TestTssSigner extends TssSigner {
    * @param sender
    * @param guardIndex
    * @param signature
+   * @param version sender's protocol version (defaults to the local one)
    */
   mockedHandleApproveMessage = (
     payload: SignApprovePayload,
     sender: string,
     guardIndex: number,
     signature: string,
-  ) => this.handleApproveMessage(payload, sender, guardIndex, signature);
+    version: string = this.protocolVersion,
+  ) =>
+    this.handleApproveMessage(payload, sender, guardIndex, signature, version);
 
   /**
    * calling protected function handleSignCachedMessage

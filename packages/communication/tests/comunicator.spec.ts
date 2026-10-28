@@ -185,6 +185,7 @@ describe('Communicator', () => {
         2,
         'guardIndex2',
         currentTime,
+        protocolVersion,
       );
     });
 
@@ -313,7 +314,7 @@ describe('Communicator', () => {
      * - generate a validly signed message whose version shares protocolVersion's major but differs in minor/patch
      * - pass to handleMessage
      * @expect
-     * - processMessage must be called
+     * - processMessage must be called with the sender's version as last argument
      */
     it('should call processMessage when only the minor/patch protocol version differs', async () => {
       const currentTime = 1685683148;
@@ -333,7 +334,7 @@ describe('Communicator', () => {
         version: otherVersion,
       };
       await communicator.handleMessage(JSON.stringify(message), 'guardIndex2');
-      expect(communicator.processMessage).toHaveBeenCalledOnce();
+      expect(communicator.processMessage).toHaveBeenCalledExactlyOnceWith('message', payload, sign, 2, 'guardIndex2', currentTime, otherVersion);
     });
 
     /**

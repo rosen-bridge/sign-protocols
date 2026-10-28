@@ -1,5 +1,5 @@
 import { DummyLogger } from '@rosen-bridge/abstract-logger';
-import { Communicator } from '@rosen-bridge/communication';
+import { Communicator, getVersionSections } from '@rosen-bridge/communication';
 import { GuardDetection, ActiveGuard } from '@rosen-bridge/detection';
 import { Mutex } from '@rosen-bridge/semaphore';
 import axios, { Axios, AxiosResponse } from '@rosen-clients/rate-limited-axios';
@@ -230,6 +230,7 @@ export abstract class TssSigner extends Communicator {
           timestamp,
         };
         sign.signs = Array(this.guardPks.length).fill('');
+        sign.versions = Array(this.guardPks.length).fill(this.protocolVersion);
         sign.signs[await this.getIndex()] = await this.signPayload(
           {
             msg: sign.msg,
@@ -377,6 +378,7 @@ export abstract class TssSigner extends Communicator {
     senderIndex: number,
     peerId: string,
     timestamp: number,
+    version: string,
   ) => {
     switch (messageType as SignMessageType) {
       case requestMessage:
@@ -392,6 +394,7 @@ export abstract class TssSigner extends Communicator {
           peerId,
           senderIndex,
           sign,
+          version,
         );
       case cachedMessage:
         return this.handleSignCachedMessage(
@@ -617,6 +620,7 @@ export abstract class TssSigner extends Communicator {
     sender: string,
     guardIndex: number,
     signature: string,
+    version: string,
   ) => {
     const sign = this.getSign(payload.msg);
     if (!sign) {
@@ -631,6 +635,10 @@ export abstract class TssSigner extends Communicator {
       return await this.signAccessMutex.acquire().then(async (release) => {
         try {
           sign.signs[guardIndex] = signature;
+          sign.versions ??= Array(this.guardPks.length).fill(
+            this.protocolVersion,
+          );
+          sign.versions[guardIndex] = version;
           const approvedGuards = await this.getApprovedGuards(
             sign.request!.timestamp,
             {
@@ -639,12 +647,14 @@ export abstract class TssSigner extends Communicator {
               initGuardIndex: await this.getIndex(),
             },
             sign.signs,
+            sign.versions,
           );
           if (approvedGuards.length >= this.threshold.value) {
             if (this.getSign(payload.msg)) {
               const payload: SignStartPayload = {
                 msg: sign.msg,
                 signs: sign.signs,
+                versions: sign.versions,
                 guards: sign.request!.guards,
               };
               await this.sendMessage(
@@ -766,6 +776,7 @@ export abstract class TssSigner extends Communicator {
       timestamp,
       payloadToSign,
       payload.signs,
+      payload.versions,
     );
     if (approvedGuards.length >= this.threshold.value) {
       await this.signAccessMutex.acquire().then(async (release) => {
@@ -781,11 +792,13 @@ export abstract class TssSigner extends Communicator {
    * @param timestamp
    * @param payload
    * @param signs
+   * @param versions protocol version of each signer (defaults to the local one)
    */
   protected getApprovedGuards = async (
     timestamp: number,
     payload: SignApprovePayload,
     signs: Array<string>,
+    versions: Array<string> = [],
   ): Promise<Array<ActiveGuard>> => {
     return (
       await Promise.all(
@@ -794,12 +807,18 @@ export abstract class TssSigner extends Communicator {
           if (index === -1) return undefined;
           const sign = signs[index];
           if (sign === '') return undefined;
+          const version = versions[index] ?? this.protocolVersion;
+          if (
+            getVersionSections(version).major !==
+            getVersionSections(this.protocolVersion).major
+          )
+            return undefined;
           const verifiedSign = await this.messageEnc.verify(
             TssSigner.generatePayloadToSign(
               payload,
               timestamp,
               guard.publicKey,
-              this.protocolVersion,
+              version,
             ),
             sign,
             guard.publicKey,

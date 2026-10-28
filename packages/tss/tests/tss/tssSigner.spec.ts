@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, MockInstance, vi } from 'vitest';
 import { GuardDetection, ActiveGuard } from '@rosen-bridge/detection';
 import { EdDSA } from '@rosen-bridge/encryption';
 
-import { SignRequestPayload, StatusEnum } from '../../lib';
+import { SignRequestPayload, StatusEnum, TssSigner } from '../../lib';
 import {
   approveMessage,
   cachedMessage,
@@ -621,7 +621,15 @@ describe('TssSigner', () => {
     it('should call handleRequestMessage when message type is requestMessage', async () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const mockedFn = ((signer as any).handleRequestMessage = vi.fn());
-      await signer.processMessage(requestMessage, {}, '', 1, 'peerId', 1234);
+      await signer.processMessage(
+        requestMessage,
+        {},
+        '',
+        1,
+        'peerId',
+        1234,
+        '1.0.0',
+      );
       expect(mockedFn).toHaveBeenCalledTimes(1);
       expect(mockedFn).toHaveBeenCalledWith({}, 'peerId', 1, 1234);
     });
@@ -634,7 +642,7 @@ describe('TssSigner', () => {
      * - mock handleApproveMessage
      * - call processMessage
      * @expected
-     * - mocked function must call with expected arguments
+     * - mocked function must call with expected arguments (including sender's version)
      */
     it('should call handleApproveMessage when message type is approveMessage', async () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -646,9 +654,10 @@ describe('TssSigner', () => {
         1,
         'peerId',
         1234,
+        '1.0.1',
       );
       expect(mockedFn).toHaveBeenCalledTimes(1);
-      expect(mockedFn).toHaveBeenCalledWith({}, 'peerId', 1, 'sign');
+      expect(mockedFn).toHaveBeenCalledWith({}, 'peerId', 1, 'sign', '1.0.1');
     });
 
     /**
@@ -667,7 +676,15 @@ describe('TssSigner', () => {
         .spyOn(signer as any, 'handleSignCachedMessage')
         .mockResolvedValue(undefined);
 
-      await signer.processMessage(cachedMessage, {}, 'sign', 1, 'peerId', 1234);
+      await signer.processMessage(
+        cachedMessage,
+        {},
+        'sign',
+        1,
+        'peerId',
+        1234,
+        '1.0.0',
+      );
       expect(mockedHandleSignCachedMessage).toHaveBeenCalledTimes(1);
       expect(mockedHandleSignCachedMessage).toHaveBeenCalledWith({}, 'peerId');
     });
@@ -685,7 +702,15 @@ describe('TssSigner', () => {
     it('should call handleStartMessage when message type is startMessage', async () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const mockedFn = ((signer as any).handleStartMessage = vi.fn());
-      await signer.processMessage(startMessage, {}, '', 1, 'peerId', 1234);
+      await signer.processMessage(
+        startMessage,
+        {},
+        '',
+        1,
+        'peerId',
+        1234,
+        '1.0.0',
+      );
       expect(mockedFn).toHaveBeenCalledTimes(1);
       expect(mockedFn).toHaveBeenCalledWith({}, 1234, 1, 'peerId');
     });
@@ -1453,7 +1478,55 @@ describe('TssSigner', () => {
           '',
           '',
         ],
+        versions: Array(10).fill(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (signer as any).protocolVersion,
+        ),
       });
+    });
+
+    /**
+     * @target TssSigner.handleApproveMessage should store the sender's protocol version
+     * @dependencies
+     * @scenario
+     * - mock updateThreshold and getApprovedGuards (not enough guards)
+     * - call handleApproveMessage with a different patch version for guard 2
+     * @expected
+     * - sign.versions[2] must be the sender's version
+     * - other entries must be the local version
+     * - getApprovedGuards must be called with sign.versions
+     */
+    it("should store the sender's protocol version", async () => {
+      const mockedGetApprovedGuards = vi
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .spyOn(signer as any, 'getApprovedGuards')
+        .mockResolvedValue([]);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.spyOn(signer as any, 'updateThreshold').mockResolvedValue(undefined);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (signer as any).threshold = { expiry: 0, value: 7 };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const localVersion = (signer as any).protocolVersion as string;
+      const otherVersion = `${localVersion.split('.')[0]}.99.99`;
+      await signer.mockedHandleApproveMessage(
+        { msg: 'test message', guards: activeGuards, initGuardIndex: 0 },
+        'peerId-2',
+        2,
+        'random signature',
+        otherVersion,
+      );
+      const sign = signer.getSigns()[0];
+      expect(sign.versions).toEqual(
+        Array(10)
+          .fill(localVersion)
+          .map((item, index) => (index === 2 ? otherVersion : item)),
+      );
+      expect(mockedGetApprovedGuards).toHaveBeenCalledWith(
+        timestamp,
+        expect.anything(),
+        sign.signs,
+        sign.versions,
+      );
     });
 
     /**
@@ -1791,6 +1864,39 @@ describe('TssSigner', () => {
       expect(mockedStartSign).toHaveBeenCalledWith(
         'signing message',
         activeGuards,
+      );
+    });
+
+    /**
+     * @target TssSigner.handleStartMessage should pass the signers' versions to getApprovedGuards
+     * @dependencies
+     * @scenario
+     * - add sign instance to list
+     * - mock getApprovedGuards
+     * - call handleStartMessage with `versions` in payload
+     * @expected
+     * - getApprovedGuards must be called with payload signs and versions
+     */
+    it("should pass the signers' versions to getApprovedGuards", async () => {
+      const mockedGetApprovedGuards = vi
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .spyOn(signer as any, 'getApprovedGuards')
+        .mockResolvedValue(activeGuards);
+      const signs = Array(10)
+        .fill('')
+        .map((item, index) => (index < 7 ? `signature ${index}` : ''));
+      const versions = Array(10).fill('1.0.5');
+      await signer.mockedHandleStartMessage(
+        { msg: 'signing message', guards: activeGuards, signs, versions },
+        timestamp,
+        6,
+        'peerId-6',
+      );
+      expect(mockedGetApprovedGuards).toHaveBeenCalledWith(
+        timestamp,
+        expect.anything(),
+        signs,
+        versions,
       );
     });
 
@@ -2305,6 +2411,131 @@ describe('TssSigner', () => {
       );
       expect(res.length).toEqual(1);
       expect(res).toEqual(guards);
+    });
+
+    /**
+     * @target TssSigner.getApprovedGuards should return guard signed with a different minor/patch version
+     * when its version is provided
+     * @dependencies
+     * @scenario
+     * - sign the approve payload by guard 1 with a version differing in minor/patch from the local one
+     * - call function with the signature and the signer's version
+     * @expected
+     * - returned list must contain the guard
+     */
+    it('should return guard signed with a different minor/patch version when its version is provided', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const localVersion = (signer as any).protocolVersion as string;
+      const otherVersion = `${localVersion.split('.')[0]}.99.99`;
+      const publicKey = await guardMessageEncs[1].getPk();
+      const guards = [{ publicKey, peerId: 'peer-Id1', index: 1 }];
+      const payload = {
+        guards,
+        msg: 'testing message',
+        initGuardIndex: 1,
+      };
+      const signature = await guardMessageEncs[1].sign(
+        TssSigner.generatePayloadToSign(
+          payload,
+          timestamp,
+          publicKey,
+          otherVersion,
+        ),
+      );
+      const signs = Array(10).fill('');
+      signs[1] = signature;
+      const versions = Array(10).fill(localVersion);
+      versions[1] = otherVersion;
+
+      const res = await signer.mockedGetApprovedGuards(
+        timestamp,
+        payload,
+        signs,
+        versions,
+      );
+      expect(res).toEqual(guards);
+
+      // without the signer's version the local one is used and verification fails
+      const resWithoutVersions = await signer.mockedGetApprovedGuards(
+        timestamp,
+        payload,
+        signs,
+      );
+      expect(resWithoutVersions).toEqual([]);
+    });
+
+    /**
+     * @target TssSigner.getApprovedGuards should verify with the local version when versions are not provided
+     * @dependencies
+     * @scenario
+     * - sign the approve payload by guard 1 with the local version
+     * - call function without versions
+     * @expected
+     * - returned list must contain the guard
+     */
+    it('should verify with the local version when versions are not provided', async () => {
+      const publicKey = await guardMessageEncs[1].getPk();
+      const guards = [{ publicKey, peerId: 'peer-Id1', index: 1 }];
+      const payload = {
+        guards,
+        msg: 'testing message',
+        initGuardIndex: 1,
+      };
+      const signs = Array(10).fill('');
+      signs[1] = await guardMessageEncs[1].sign(
+        TssSigner.generatePayloadToSign(
+          payload,
+          timestamp,
+          publicKey,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (signer as any).protocolVersion,
+        ),
+      );
+      const res = await signer.mockedGetApprovedGuards(
+        timestamp,
+        payload,
+        signs,
+      );
+      expect(res).toEqual(guards);
+    });
+
+    /**
+     * @target TssSigner.getApprovedGuards should not return guard when its major version differs
+     * @dependencies
+     * @scenario
+     * - sign the approve payload by guard 1 with a different major version
+     * - call function with the signature and the signer's version
+     * @expected
+     * - returned list must be empty
+     */
+    it('should not return guard when its major version differs', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const localVersion = (signer as any).protocolVersion as string;
+      const otherVersion = `${Number(localVersion.split('.')[0]) + 1}.0.0`;
+      const publicKey = await guardMessageEncs[1].getPk();
+      const guards = [{ publicKey, peerId: 'peer-Id1', index: 1 }];
+      const payload = {
+        guards,
+        msg: 'testing message',
+        initGuardIndex: 1,
+      };
+      const signs = Array(10).fill('');
+      signs[1] = await guardMessageEncs[1].sign(
+        TssSigner.generatePayloadToSign(
+          payload,
+          timestamp,
+          publicKey,
+          otherVersion,
+        ),
+      );
+      const versions = Array(10).fill(otherVersion);
+      const res = await signer.mockedGetApprovedGuards(
+        timestamp,
+        payload,
+        signs,
+        versions,
+      );
+      expect(res).toEqual([]);
     });
   });
 

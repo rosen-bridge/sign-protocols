@@ -39,6 +39,10 @@ export interface Sign {
     timestamp: number;
   };
   signs: Array<string>;
+  /**
+   * protocol version of each signer, parallel to `signs`
+   */
+  versions?: Array<string>;
   addedTime: number;
   posted: boolean;
   chainCode: string;
@@ -73,6 +77,10 @@ export interface SignStartPayload {
   msg: string;
   guards: Array<ActiveGuard>;
   signs: Array<string>;
+  /**
+   * protocol version of each signer, parallel to `signs`
+   */
+  versions?: Array<string>;
 }
 
 export interface PublicKeyID {
