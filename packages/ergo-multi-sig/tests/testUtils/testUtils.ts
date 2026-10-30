@@ -4,7 +4,7 @@ import * as wasm from 'ergo-lib-wasm-nodejs';
 import { GuardDetection } from '@rosen-bridge/detection';
 import { ECDSA } from '@rosen-bridge/encryption';
 
-import { MultiSigHandler, MultiSigUtils } from '../../lib';
+import { ErgoMultiSigConfig, MultiSigHandler, MultiSigUtils } from '../../lib';
 import { mockedErgoStateContext, testPubs, testSecrets } from '../testData';
 import TestConfigs from './testConfigs';
 
@@ -19,11 +19,13 @@ class TestUtils {
    * @param secret secret of the handler
    * @param submit submit function for messages
    * @param pks public keys of the handlers
+   * @param config config fields to override
    */
   static generateMultiSigHandlerInstance = async (
     secret: string,
     submit: (msg: string, peers: Array<string>) => unknown,
     pks?: string[],
+    config?: Partial<ErgoMultiSigConfig>,
   ): Promise<MultiSigHandler> => {
     const multiSigUtilsInstance = new MultiSigUtils(async () => {
       return mockedErgoStateContext;
@@ -54,6 +56,7 @@ class TestUtils {
       submit: submit,
       guardDetection: guardDetection,
       commGuardsPk: commPks,
+      ...config,
     });
 
     handler.handlePublicKeysChange(pubKeys);

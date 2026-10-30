@@ -6,7 +6,10 @@ import { GuardDetection } from '@rosen-bridge/detection';
 import { Semaphore } from '@rosen-bridge/semaphore';
 
 import packageJson from '../package.json' with { type: 'json' };
-import { turnTime as defaultTurnTime } from './const';
+import {
+  turnNoWork as defaultTurnNoWork,
+  turnTime as defaultTurnTime,
+} from './const';
 import { MultiSigUtils } from './multiSigUtils';
 import {
   CommitmentPayload,
@@ -14,6 +17,7 @@ import {
   GenerateCommitmentPayload,
   InitiateSignPayload,
   MessageType,
+  PublishedCommitment,
   SignedTxPayload,
   Signer,
   SignPayload,
@@ -32,6 +36,7 @@ export class MultiSigHandler extends Communicator {
   private readonly secret: Uint8Array;
   private readonly txSignTimeout: number;
   private readonly turnTime: number;
+  private readonly turnNoWork: number;
   private prover?: wasm.Wallet;
   private semaphore = new Semaphore(1);
   private guardDetection: GuardDetection;
@@ -51,6 +56,9 @@ export class MultiSigHandler extends Communicator {
     this.secret = Uint8Array.from(Buffer.from(config.secretHex, 'hex'));
     this.txSignTimeout = config.txSignTimeout;
     this.turnTime = (config.turnTime ?? defaultTurnTime) * 1000;
+    this.turnNoWork = (config.turnNoWork ?? defaultTurnNoWork) * 1000;
+    if (this.turnNoWork >= this.turnTime)
+      throw Error('MultiSig turn no-work time must be shorter than turn time');
     this.multiSigUtilsInstance = config.multiSigUtilsInstance;
     this.ergoGuardPks = config.ergoGuardPks ?? [];
     this.guardDetection = config.guardDetection;
@@ -83,6 +91,14 @@ export class MultiSigHandler extends Communicator {
     return (
       Math.floor(new Date().getTime() / this.turnTime) % this.guardPks.length
     );
+  };
+
+  /**
+   * check if we are in last seconds of the turn or not
+   */
+  protected isNoWorkTime = (): boolean => {
+    const currentTime = new Date().getTime();
+    return this.turnTime - (currentTime % this.turnTime) <= this.turnNoWork;
   };
 
   /**
@@ -172,10 +188,34 @@ export class MultiSigHandler extends Communicator {
    * @param transaction transaction to clean
    */
   private cleanTxState = (transaction: TxQueued) => {
+    // a commitment secret belongs to the round it was generated for
+    transaction.secret = undefined;
     transaction.simulatedBag = wasm.TransactionHintsBag.empty();
     transaction.commitments = {};
     transaction.commitmentSigns = {};
     transaction.signs = {};
+  };
+
+  /**
+   * check if committed indexes of an initiate sign payload are distinct valid
+   * peer indexes, each with exactly one commitment
+   * @param payload initiate sign payload
+   * @param peersCount number of peers
+   */
+  private isValidCommittedSet = (
+    payload: InitiateSignPayload,
+    peersCount: number,
+  ): boolean => {
+    const { committedInds, cmts } = payload;
+    return (
+      Array.isArray(committedInds) &&
+      Array.isArray(cmts) &&
+      committedInds.length === cmts.length &&
+      new Set(committedInds).size === committedInds.length &&
+      committedInds.every(
+        (ind) => Number.isInteger(ind) && ind >= 0 && ind < peersCount,
+      )
+    );
   };
 
   /**
@@ -246,67 +286,104 @@ export class MultiSigHandler extends Communicator {
    * generating commitment for transaction in the queue by id and send it to the coordinator
    * @param txId transaction id to generate commitment for
    * @param coordinatorIndex the index of the coordinator (undefined if self-initiated as coordinator)
+   * @returns true if a new commitment is generated
    */
   generateCommitment = async (
     txId: string,
     coordinatorIndex?: number,
-  ): Promise<void> => {
-    const transaction = this.transactions.get(txId);
-    if (transaction && transaction.tx) {
-      // If this is a request from a coordinator, set them as the coordinator for this tx
-      if (coordinatorIndex !== undefined) {
-        // Clean state if coordinator changed
-        if (transaction.coordinator !== coordinatorIndex) {
-          this.cleanTxState(transaction);
-        }
-        transaction.coordinator = coordinatorIndex;
-      } else {
-        // Self-initiated: we are the coordinator
-        const currentTurn = this.getCurrentTurnInd();
-        if (transaction.coordinator !== currentTurn) {
-          this.cleanTxState(transaction);
-        }
-        transaction.coordinator = currentTurn;
+  ): Promise<boolean> => {
+    // only the guard with the current turn may request commitments
+    const currentTurn = this.getCurrentTurnInd();
+    if (coordinatorIndex !== undefined && coordinatorIndex !== currentTurn) {
+      this.logger.debug(
+        `Received generate commitment for tx [${txId}] from guard [${coordinatorIndex}] but it's not that guard's turn. The correct turn is [${currentTurn}].`,
+      );
+      return false;
+    }
+    // If this is a request from a coordinator, set them as the coordinator for this tx
+    // otherwise it is self-initiated, and we are the coordinator
+    const coordinator = coordinatorIndex ?? (await this.getIndex());
+
+    let publishCommitments: PublishedCommitment | undefined;
+    const release = await this.semaphore.acquire();
+    try {
+      const transaction = this.transactions.get(txId);
+      if (!transaction || !transaction.tx) return false;
+      // the turn may have changed while waiting for the semaphore
+      const turnAfterWait = this.getCurrentTurnInd();
+      if (coordinator !== turnAfterWait) {
+        this.logger.debug(
+          `Skipped generating commitment for tx [${txId}] for coordinator [${coordinator}] because the turn changed to [${turnAfterWait}].`,
+        );
+        return false;
+      }
+      // the no-work time may have started while waiting for the semaphore
+      if (coordinatorIndex === undefined && this.isNoWorkTime()) {
+        this.logger.debug(
+          `Skipped starting a round for tx [${txId}] because the no-work time of the turn started.`,
+        );
+        return false;
+      }
+      // a concurrent call has already started this guard's round
+      if (
+        coordinatorIndex === undefined &&
+        transaction.coordinator === coordinator
+      )
+        return false;
+
+      // Clean state if coordinator changed
+      if (transaction.coordinator !== coordinator) {
+        this.cleanTxState(transaction);
       }
 
-      transaction.secret =
+      const secret =
         this.getProver().generate_commitments_for_reduced_transaction(
           transaction.tx,
         );
+      // set the coordinator only after generation succeeds, so a failed
+      // self-initiated round can be retried
+      transaction.coordinator = coordinator;
+      transaction.secret = secret;
 
       // publishable commitment
       const myPub = this.getPk();
-      const publishCommitments = MultiSigUtils.toReducedPublishedCommitments(
-        transaction.secret,
+      publishCommitments = MultiSigUtils.toReducedPublishedCommitments(
+        secret,
         myPub,
       );
       transaction.commitments[myPub] = publishCommitments;
+    } finally {
+      this.logger.debug(
+        `Releasing semaphore after generating commitment for tx [${txId}]`,
+      );
+      release();
+    }
 
-      // Send commitment to the coordinator if this was requested by another peer
-      if (coordinatorIndex !== undefined) {
-        const coordinatorId = (await this.peersWithIds()).find(
-          (p, i) => i === coordinatorIndex,
-        )?.id;
-        if (coordinatorId) {
-          this.logger.debug(
-            `New commitment generated for tx [${txId}]. Sending to coordinator (index: ${coordinatorIndex})...`,
-          );
-          await this.sendMessage(
-            MessageType.Commitment,
-            {
-              txId: txId,
-              commitment: publishCommitments,
-            },
-            [coordinatorId],
-            this.getDate(),
-          );
-        }
-      } else {
+    // Send commitment to the coordinator if this was requested by another peer
+    if (coordinatorIndex !== undefined) {
+      const coordinatorId = (await this.peersWithIds()).find(
+        (p, i) => i === coordinatorIndex,
+      )?.id;
+      if (coordinatorId) {
         this.logger.debug(
-          `Commitment generated for tx [${txId}] by coordinator (self, index: ${transaction.coordinator}).`,
+          `New commitment generated for tx [${txId}]. Sending to coordinator (index: ${coordinatorIndex})...`,
+        );
+        await this.sendMessage(
+          MessageType.Commitment,
+          {
+            txId: txId,
+            commitment: publishCommitments,
+          },
+          [coordinatorId],
+          this.getDate(),
         );
       }
+    } else {
+      this.logger.debug(
+        `Commitment generated for tx [${txId}] by coordinator (self, index: ${coordinator}).`,
+      );
     }
+    return true;
   };
 
   /**
@@ -330,7 +407,7 @@ export class MultiSigHandler extends Communicator {
         payload.txId,
       );
       try {
-        if (transaction.tx === undefined || transaction.secret === undefined) {
+        if (transaction.tx === undefined) {
           this.logger.info(
             `Received commitment for tx [${payload.txId}] but the transaction is not properly in the queue yet.`,
           );
@@ -349,6 +426,12 @@ export class MultiSigHandler extends Communicator {
         // if enough commitments, we do not need to process new commitments
         const commits = Object.values(transaction.commitments);
         if (commits.length < transaction.requiredSigner) {
+          if (transaction.secret === undefined) {
+            this.logger.info(
+              `Received commitment for tx [${payload.txId}] but this guard has no commitment for it yet.`,
+            );
+            return;
+          }
           try {
             transaction.commitments[pub] = payload.commitment;
             transaction.commitmentSigns[pub] = signature;
@@ -366,6 +449,13 @@ export class MultiSigHandler extends Communicator {
               Object.keys(transaction.commitments).length >=
               transaction.requiredSigner
             ) {
+              // peers must still see this guard's turn when initiate sign arrives
+              if (myIndex !== this.getCurrentTurnInd() || this.isNoWorkTime()) {
+                this.logger.debug(
+                  `Tx [${payload.txId}] has enough commitments but it's not this guard's turn or it's the no-work time of the turn. Skipped initiating sign.`,
+                );
+                return;
+              }
               const willSignPubs = Object.keys(transaction.commitments);
               const willSignInds = willSignPubs.map((pub) =>
                 this.peers()
@@ -415,7 +505,10 @@ export class MultiSigHandler extends Communicator {
                   simulated,
                 );
 
-              MultiSigUtils.add_hints(hints, transaction.secret, inputLen);
+              // a commitment secret must sign only once; consume it before signing
+              const secret = transaction.secret;
+              transaction.secret = undefined;
+              MultiSigUtils.add_hints(hints, secret, inputLen);
               const signedTx = this.getProver().sign_reduced_transaction_multi(
                 transaction.tx,
                 hints,
@@ -506,17 +599,50 @@ export class MultiSigHandler extends Communicator {
       );
       let outgoingSignPayload: SignPayload | undefined;
       try {
-        if (transaction.tx === undefined || transaction.secret === undefined) {
+        if (transaction.tx === undefined) {
           this.logger.info(
             `Received initiate sign for tx [${payload.txId}] but the transaction is not properly in the queue yet.`,
           );
           return;
         }
-        this.logger.info(`Initiating sign for tx [${payload.txId}]...`);
+        if (transaction.secret === undefined) {
+          this.logger.info(
+            `Received initiate sign for tx [${payload.txId}] but this guard has no unused commitment for it (already signed or not committed).`,
+          );
+          return;
+        }
+        // the commitment secret may only be spent on the round this guard committed to
+        if (transaction.coordinator !== index) {
+          this.logger.warn(
+            `Received initiate sign from [${sender}] for tx [${payload.txId}] but that guard is not the coordinator of this tx. Coordinator index: ${transaction.coordinator}, sender index: ${index}.`,
+          );
+          return;
+        }
         const myPub = this.getPk();
-        const signed = payload.committedInds.map(
-          (ind) => this.peers()[ind].pub,
+        const peerPubs = this.peers().map((peer) => peer.pub);
+        if (!this.isValidCommittedSet(payload, peerPubs.length)) {
+          this.logger.warn(
+            `Received initiate sign from [${sender}] for tx [${payload.txId}] with an invalid committed set.`,
+          );
+          return;
+        }
+        const myPosition = payload.committedInds.indexOf(
+          peerPubs.indexOf(myPub),
         );
+        if (
+          myPosition === -1 ||
+          !MultiSigUtils.isSamePublishedCommitment(
+            payload.cmts[myPosition],
+            transaction.commitments[myPub],
+          )
+        ) {
+          this.logger.warn(
+            `Received initiate sign from [${sender}] for tx [${payload.txId}] that does not contain this guard's current commitment.`,
+          );
+          return;
+        }
+        this.logger.info(`Initiating sign for tx [${payload.txId}]...`);
+        const signed = payload.committedInds.map((ind) => peerPubs[ind]);
         const simulated = this.peers()
           .filter((peer) => !signed.includes(peer.pub))
           .map((peer) => peer.pub);
@@ -546,7 +672,10 @@ export class MultiSigHandler extends Communicator {
         );
         MultiSigUtils.add_hints(hints, simProofs, inputLen);
 
-        MultiSigUtils.add_hints(hints, transaction.secret, inputLen);
+        // a commitment secret must sign only once; consume it before signing
+        const secret = transaction.secret;
+        transaction.secret = undefined;
+        MultiSigUtils.add_hints(hints, secret, inputLen);
 
         const partial = this.getProver().sign_reduced_transaction_multi(
           transaction.tx,
@@ -756,12 +885,17 @@ export class MultiSigHandler extends Communicator {
     const myInd = await this.getIndex();
 
     if ((await this.isMyTurn()) && transaction.coordinator !== myInd) {
+      if (this.isNoWorkTime()) {
+        this.logger.debug(
+          `Postponed initiating sign for tx [${txId}] because it's the no-work time of the turn.`,
+        );
+        return;
+      }
       this.logger.debug(
         `Initiating sign for tx [${txId}] because it's this guards turn. The correct turn is [${await this.getCurrentTurnId()}]...`,
       );
-      this.cleanTxState(transaction);
-      transaction.coordinator = myInd;
-      await this.generateCommitment(txId);
+      // becoming the coordinator cleans the tx state under the semaphore
+      if (!(await this.generateCommitment(txId))) return;
       //   ask peers to generate commitment
       const myPub = this.getPk();
       await this.sendMessage(
@@ -789,7 +923,14 @@ export class MultiSigHandler extends Communicator {
       `Handling my turn for all transactions in the queue. Current turn: ${await this.getCurrentTurnId()}...`,
     );
     for (const txId of this.transactions.keys()) {
-      await this.handleMyTurnForTx(txId);
+      try {
+        await this.handleMyTurnForTx(txId);
+      } catch (e) {
+        this.logger.warn(
+          `An unknown exception occurred while handling my turn for tx [${txId}]: ${e}`,
+        );
+        if (e instanceof Error && e.stack) this.logger.warn(e.stack);
+      }
     }
   };
 
