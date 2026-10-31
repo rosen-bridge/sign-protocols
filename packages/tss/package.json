@@ -1,6 +1,6 @@
 {
   "name": "@rosen-bridge/tss",
-  "version": "6.0.1",
+  "version": "6.0.2",
   "description": "TypeScript library for building and validating TSS signatures.",
   "keywords": [
     "rosen"

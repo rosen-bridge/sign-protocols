@@ -1,5 +1,12 @@
 # @rosen-bridge/tss
 
+## 6.0.2
+
+### Patch Changes
+
+- Fix `TssSigner.cleanup()` silently dropping timed out signs without invoking their callback
+- `TssSigner.sign` no longer throws when a message is already being signed
+
 ## 6.0.1
 
 ### Patch Changes
