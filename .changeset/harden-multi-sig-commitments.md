@@ -9,4 +9,5 @@ Harden multi-sig commitment lifecycle
 - Ignore commitment requests from guards without the current turn
 - Serialize commitment generation with other transaction state updates
 - Retry a transaction whose commitment generation failed and keep handling the remaining transactions
-- Do not start a round or initiate sign in the last seconds of a turn (new `turnNoWork` config, 10 seconds by default)
+- Do not start a round or initiate sign in the last seconds of a turn (new `turnNoWork` config, 10 seconds by default; must be shorter than `turnTime`, otherwise the constructor throws)
+- Remove the unused `multiSigFirstSignDelay` config option; callers that still pass it must drop it

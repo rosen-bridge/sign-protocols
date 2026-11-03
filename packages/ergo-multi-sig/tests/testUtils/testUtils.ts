@@ -52,7 +52,6 @@ class TestUtils {
       messageEnc: ecdsaMessageEnc,
       secretHex: secret,
       txSignTimeout: TestConfigs.txSignTimeout,
-      multiSigFirstSignDelay: TestConfigs.multiSigFirstSignDelay,
       submit: submit,
       guardDetection: guardDetection,
       commGuardsPk: commPks,

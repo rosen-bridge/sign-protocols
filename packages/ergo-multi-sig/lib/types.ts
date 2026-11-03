@@ -114,7 +114,6 @@ interface ErgoMultiSigConfig {
   messageEnc: EncryptionHandler;
   secretHex: string;
   txSignTimeout: number;
-  multiSigFirstSignDelay?: number;
   turnTime?: number;
   turnNoWork?: number;
   submit: (msg: string, peers: Array<string>) => unknown;
