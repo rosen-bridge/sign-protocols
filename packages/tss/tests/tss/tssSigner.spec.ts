@@ -10,6 +10,7 @@ import {
   requestMessage,
   startMessage,
 } from '../../lib/const/signer';
+import packageJson from '../../package.json' with { type: 'json' };
 import { generateSigners } from '../testUtils';
 import { TestTssSigner } from './testTssSigner';
 
@@ -2301,10 +2302,63 @@ describe('TssSigner', () => {
           msg: 'testing message',
           initGuardIndex: 1,
         },
-        Array(10).fill('random-signature'),
+        Array(10).fill(`${packageJson.version}:random-signature`),
       );
       expect(res.length).toEqual(1);
       expect(res).toEqual(guards);
+    });
+
+    /**
+     * @target TssSigner.getApprovedGuards should return only guards whose
+     * signature version has the same major
+     * @dependencies
+     * @scenario
+     * - sign approve payload by four guards with: a newer patch, a newer minor,
+     *   the same version and a newer major
+     * - call function with the four guards and their signatures
+     * @expected
+     * - returned list must contain the first three guards only
+     */
+    it('should return only guards whose signature version has the same major', async () => {
+      const [major, minor, patch] = packageJson.version.split('.').map(Number);
+      const versions = [
+        `${major}.${minor}.${patch + 1}`,
+        `${major}.${minor + 1}.0`,
+        `${major}.${minor}.${patch}`,
+        `${major + 1}.0.0`,
+      ];
+      const guards = await Promise.all(
+        versions.map(async (_, i) => ({
+          publicKey: await guardMessageEncs[i + 1].getPk(),
+          peerId: `peer-Id${i + 1}`,
+          index: i + 1,
+        })),
+      );
+      const payload = {
+        guards,
+        msg: 'testing message',
+        initGuardIndex: 1,
+      };
+      const signatures: Array<string> = Array(10).fill('');
+      await Promise.all(
+        versions.map(async (version, i) => {
+          const rawSignature = await guardMessageEncs[i + 1].sign(
+            TestTssSigner.generatePayloadToSign(
+              payload,
+              timestamp,
+              guards[i].publicKey,
+              version,
+            ),
+          );
+          signatures[i + 1] = `${version}:${rawSignature}`;
+        }),
+      );
+      const res = await signer.mockedGetApprovedGuards(
+        timestamp,
+        payload,
+        signatures,
+      );
+      expect(res).toEqual(guards.slice(0, 3));
     });
   });
 

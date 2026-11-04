@@ -30,4 +30,25 @@ export class TestCommunicator extends Communicator {
   mockedGetIndex = async () => await this.getIndex();
 
   mockedGetDate = () => this.getDate();
+
+  /**
+   * calls protected function verifyPayloadSignatureAndVersion
+   * @param payload
+   * @param timestamp
+   * @param publicKey
+   * @param signature
+   */
+  callVerifyPayloadSignatureAndVersion = (
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    payload: any,
+    timestamp: number,
+    publicKey: string,
+    signature: string,
+  ) =>
+    this.verifyPayloadSignatureAndVersion(
+      payload,
+      timestamp,
+      publicKey,
+      signature,
+    );
 }
