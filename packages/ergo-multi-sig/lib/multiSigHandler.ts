@@ -7,7 +7,7 @@ import { Semaphore } from '@rosen-bridge/semaphore';
 
 import packageJson from '../package.json' with { type: 'json' };
 import {
-  turnNoWork as defaultTurnNoWork,
+  turnStartDelay as defaultTurnStartDelay,
   turnTime as defaultTurnTime,
 } from './const';
 import { MultiSigUtils } from './multiSigUtils';
@@ -36,7 +36,7 @@ export class MultiSigHandler extends Communicator {
   private readonly secret: Uint8Array;
   private readonly txSignTimeout: number;
   private readonly turnTime: number;
-  private readonly turnNoWork: number;
+  private readonly turnStartDelay: number;
   private prover?: wasm.Wallet;
   private semaphore = new Semaphore(1);
   private guardDetection: GuardDetection;
@@ -56,9 +56,10 @@ export class MultiSigHandler extends Communicator {
     this.secret = Uint8Array.from(Buffer.from(config.secretHex, 'hex'));
     this.txSignTimeout = config.txSignTimeout;
     this.turnTime = (config.turnTime ?? defaultTurnTime) * 1000;
-    this.turnNoWork = (config.turnNoWork ?? defaultTurnNoWork) * 1000;
-    if (this.turnNoWork >= this.turnTime)
-      throw Error('MultiSig turn no-work time must be shorter than turn time');
+    this.turnStartDelay =
+      (config.turnStartDelay ?? defaultTurnStartDelay) * 1000;
+    if (this.turnStartDelay >= this.turnTime)
+      throw Error('MultiSig turn start delay must be shorter than turn time');
     this.multiSigUtilsInstance = config.multiSigUtilsInstance;
     this.ergoGuardPks = config.ergoGuardPks ?? [];
     this.guardDetection = config.guardDetection;
@@ -94,11 +95,12 @@ export class MultiSigHandler extends Communicator {
   };
 
   /**
-   * check if we are in last seconds of the turn or not
+   * check if we are in first seconds of the turn or not, so that guards with
+   * slightly delayed clocks also see the new turn when a round starts
    */
-  protected isNoWorkTime = (): boolean => {
+  protected isInTurnStartDelay = (): boolean => {
     const currentTime = new Date().getTime();
-    return this.turnTime - (currentTime % this.turnTime) <= this.turnNoWork;
+    return currentTime % this.turnTime < this.turnStartDelay;
   };
 
   /**
@@ -190,6 +192,7 @@ export class MultiSigHandler extends Communicator {
   private cleanTxState = (transaction: TxQueued) => {
     // a commitment secret belongs to the round it was generated for
     transaction.secret = undefined;
+    transaction.coordinator = -1;
     transaction.simulatedBag = wasm.TransactionHintsBag.empty();
     transaction.commitments = {};
     transaction.commitmentSigns = {};
@@ -308,7 +311,12 @@ export class MultiSigHandler extends Communicator {
     const release = await this.semaphore.acquire();
     try {
       const transaction = this.transactions.get(txId);
-      if (!transaction || !transaction.tx) return false;
+      if (!transaction || !transaction.tx) {
+        this.logger.debug(
+          `Skipped generating commitment for tx [${txId}] because the transaction is not in the queue.`,
+        );
+        return false;
+      }
       // the turn may have changed while waiting for the semaphore
       const turnAfterWait = this.getCurrentTurnInd();
       if (coordinator !== turnAfterWait) {
@@ -317,19 +325,16 @@ export class MultiSigHandler extends Communicator {
         );
         return false;
       }
-      // the no-work time may have started while waiting for the semaphore
-      if (coordinatorIndex === undefined && this.isNoWorkTime()) {
-        this.logger.debug(
-          `Skipped starting a round for tx [${txId}] because the no-work time of the turn started.`,
-        );
-        return false;
-      }
       // a concurrent call has already started this guard's round
       if (
         coordinatorIndex === undefined &&
         transaction.coordinator === coordinator
-      )
+      ) {
+        this.logger.debug(
+          `Skipped generating commitment for tx [${txId}] because this guard has already started a round for it.`,
+        );
         return false;
+      }
 
       // Clean state if coordinator changed
       if (transaction.coordinator !== coordinator) {
@@ -427,8 +432,8 @@ export class MultiSigHandler extends Communicator {
         const commits = Object.values(transaction.commitments);
         if (commits.length < transaction.requiredSigner) {
           if (transaction.secret === undefined) {
-            this.logger.info(
-              `Received commitment for tx [${payload.txId}] but this guard has no commitment for it yet.`,
+            this.logger.warn(
+              `Received commitment for tx [${payload.txId}] but this guard has no commitment for its round.`,
             );
             return;
           }
@@ -449,10 +454,10 @@ export class MultiSigHandler extends Communicator {
               Object.keys(transaction.commitments).length >=
               transaction.requiredSigner
             ) {
-              // peers must still see this guard's turn when initiate sign arrives
-              if (myIndex !== this.getCurrentTurnInd() || this.isNoWorkTime()) {
+              // peers only accept initiate sign in this guard's turn
+              if (myIndex !== this.getCurrentTurnInd()) {
                 this.logger.debug(
-                  `Tx [${payload.txId}] has enough commitments but it's not this guard's turn or it's the no-work time of the turn. Skipped initiating sign.`,
+                  `Tx [${payload.txId}] has enough commitments but it's not this guard's turn anymore. Skipped initiating sign.`,
                 );
                 return;
               }
@@ -600,13 +605,13 @@ export class MultiSigHandler extends Communicator {
       let outgoingSignPayload: SignPayload | undefined;
       try {
         if (transaction.tx === undefined) {
-          this.logger.info(
+          this.logger.warn(
             `Received initiate sign for tx [${payload.txId}] but the transaction is not properly in the queue yet.`,
           );
           return;
         }
         if (transaction.secret === undefined) {
-          this.logger.info(
+          this.logger.warn(
             `Received initiate sign for tx [${payload.txId}] but this guard has no unused commitment for it (already signed or not committed).`,
           );
           return;
@@ -885,9 +890,9 @@ export class MultiSigHandler extends Communicator {
     const myInd = await this.getIndex();
 
     if ((await this.isMyTurn()) && transaction.coordinator !== myInd) {
-      if (this.isNoWorkTime()) {
+      if (this.isInTurnStartDelay()) {
         this.logger.debug(
-          `Postponed initiating sign for tx [${txId}] because it's the no-work time of the turn.`,
+          `Postponed starting a round for tx [${txId}] because it's the start delay of the turn.`,
         );
         return;
       }
@@ -926,10 +931,10 @@ export class MultiSigHandler extends Communicator {
       try {
         await this.handleMyTurnForTx(txId);
       } catch (e) {
-        this.logger.warn(
+        this.logger.error(
           `An unknown exception occurred while handling my turn for tx [${txId}]: ${e}`,
         );
-        if (e instanceof Error && e.stack) this.logger.warn(e.stack);
+        if (e instanceof Error && e.stack) this.logger.error(e.stack);
       }
     }
   };

@@ -115,7 +115,7 @@ interface ErgoMultiSigConfig {
   secretHex: string;
   txSignTimeout: number;
   turnTime?: number;
-  turnNoWork?: number;
+  turnStartDelay?: number;
   submit: (msg: string, peers: Array<string>) => unknown;
   guardDetection: GuardDetection;
   commGuardsPk: Array<string>;

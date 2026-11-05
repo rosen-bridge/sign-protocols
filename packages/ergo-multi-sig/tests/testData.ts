@@ -4,6 +4,8 @@ import {
   PreHeader,
 } from 'ergo-lib-wasm-nodejs';
 
+import { PublishedCommitment } from '../lib';
+
 const mockedBlockHeaderJson = Array(10).fill({
   extensionId:
     '0000000000000000000000000000000000000000000000000000000000000000',
@@ -422,3 +424,27 @@ export const testCmt = {
   },
   sign: 'QS+NNRkqpWlAaQXuOIJC8BLT6af+uv8+rngX9cJiltgJcBXgPn+kvunl/61GeD8XG3sT9a7Ltrixr1169CA2DA==',
 };
+
+export const publishedCommitment: PublishedCommitment = {
+  '0': [
+    { a: '1', position: '0-1' },
+    { a: '2', position: '0-2' },
+  ],
+  '1': [{ a: '3', position: '0-1' }],
+};
+
+export const differentPublishedCommitments: Array<PublishedCommitment> = [
+  { ...publishedCommitment, '1': [{ a: '4', position: '0-1' }] },
+  { ...publishedCommitment, '1': [{ a: '3', position: '0-2' }] },
+  { ...publishedCommitment, '0': [...publishedCommitment['0']].reverse() },
+  { ...publishedCommitment, '0': [publishedCommitment['0'][0]] },
+  { ...publishedCommitment, '2': [{ a: '5', position: '0-1' }] },
+  { '0': publishedCommitment['0'] },
+];
+
+export const malformedPublishedCommitments = [
+  undefined,
+  { ...publishedCommitment, '1': 'invalid' },
+  { ...publishedCommitment, '1': [null] },
+  { ...publishedCommitment, '0': [publishedCommitment['0'][0], null] },
+] as unknown as Array<PublishedCommitment | undefined>;
