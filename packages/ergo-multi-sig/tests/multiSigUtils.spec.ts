@@ -3,14 +3,13 @@ import fs from 'fs';
 import path from 'path';
 import { describe, expect, it } from 'vitest';
 
+import { MultiSigUtils } from '../lib';
 import {
   differentPublishedCommitments,
   malformedPublishedCommitments,
   mockedErgoStateContext,
   publishedCommitment,
-} from '@rosen-bridge/ergo-multi-sig/tests/testData';
-
-import { MultiSigUtils } from '../lib';
+} from './testData';
 
 describe('MultiSigUtils', () => {
   describe('publicKeyToProposition', () => {

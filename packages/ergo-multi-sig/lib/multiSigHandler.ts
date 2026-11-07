@@ -413,7 +413,7 @@ export class MultiSigHandler extends Communicator {
       );
       try {
         if (transaction.tx === undefined) {
-          this.logger.info(
+          this.logger.debug(
             `Received commitment for tx [${payload.txId}] but the transaction is not properly in the queue yet.`,
           );
           return;
