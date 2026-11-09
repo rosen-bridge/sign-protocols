@@ -156,6 +156,8 @@ export abstract class Communicator {
    * @param payload
    * @param peers
    * @param timestamp
+   * @param beforeSubmit synchronous assertion after envelope signing and serialization;
+   * throwing prevents handoff to the transport. It must not start asynchronous work.
    */
   protected sendMessage = async (
     messageType: string,
@@ -163,6 +165,7 @@ export abstract class Communicator {
     payload: any,
     peers: Array<string>,
     timestamp?: number,
+    beforeSubmit?: () => undefined,
   ) => {
     this.logger.debug(
       `sending new message of type ${messageType} with payload ${JSON.stringify(
@@ -181,7 +184,9 @@ export abstract class Communicator {
       index: await this.getIndex(),
       version: this.protocolVersion,
     };
-    this.submitMessage(JSON.stringify(message), peers);
+    const serializedMessage = JSON.stringify(message);
+    beforeSubmit?.();
+    this.submitMessage(serializedMessage, peers);
   };
 
   /**
