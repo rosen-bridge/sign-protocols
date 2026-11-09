@@ -1243,6 +1243,55 @@ describe('MultiSigHandler', () => {
     });
   });
 
+  describe('sign', () => {
+    /**
+     * @target MultiSigHandler.sign should wait for the remaining start delay
+     * of the turn and then start a round
+     * @dependencies MultiSigHandlerInstance
+     * @scenario
+     * - Generate a MultiSigHandler instance
+     * - Set system time to one second before the end of the turn 0 start delay
+     * - Call sign with a test transaction, required signs, boxes, and dataBoxes
+     * - Advance the time to just before the end of the start delay
+     * - Advance the time to the end of the start delay
+     * @expected
+     * - sendMessage should not have been called before the end of the delay
+     * - sendMessage should have been called once with GenerateCommitment
+     * - The tx should have this guard as coordinator and a commitment secret
+     */
+    it('should wait for the remaining start delay of the turn and then start a round', async () => {
+      const handler = await TestUtils.generateMultiSigHandlerInstance(
+        testSecrets[0],
+        vi.fn(),
+        testPubs,
+      );
+      const mockedSendMessage = vi.fn();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.spyOn(handler as any, 'sendMessage').mockImplementation(
+        mockedSendMessage,
+      );
+
+      vi.useRealTimers();
+      vi.useFakeTimers();
+      vi.setSystemTime(turnStartDelay - 1000);
+      handler.sign(reduced, requiredSings, boxes, dataBoxes);
+      await vi.advanceTimersByTimeAsync(999);
+      expect(mockedSendMessage).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(1);
+      vi.useRealTimers();
+
+      expect(mockedSendMessage).toHaveBeenCalledTimes(1);
+      expect(mockedSendMessage.mock.calls[0][0]).toEqual(
+        MessageType.GenerateCommitment,
+      );
+      const { transaction, release } = await handler.getQueuedTransaction(txId);
+      release();
+      expect(transaction.coordinator).toEqual(0);
+      expect(transaction.secret).toBeDefined();
+    });
+  });
+
   describe('handleMyTurnForTx', () => {
     /**
      * @target MultiSigHandler.handleMyTurnForTx should start only one round
@@ -1285,42 +1334,6 @@ describe('MultiSigHandler', () => {
           (args) => args[0] === MessageType.GenerateCommitment,
         ).length,
       ).toEqual(1);
-    });
-
-    /**
-     * @target MultiSigHandler.handleMyTurnForTx should not start a round in
-     * the start delay of the turn
-     * @dependencies MultiSigHandlerInstance
-     * @scenario
-     * - Generate a MultiSigHandler instance
-     * - Call addTx with a test transaction, required signs, boxes, and dataBoxes
-     * - Set system time to the start delay of turn 0
-     * - Call handleMyTurnForTx
-     * @expected
-     * - sendMessage should not have been called
-     * - The tx should have no coordinator or commitment secret
-     */
-    it('should not start a round in the start delay of the turn', async () => {
-      const handler = await TestUtils.generateMultiSigHandlerInstance(
-        testSecrets[0],
-        vi.fn(),
-        testPubs,
-      );
-      const mockedSendMessage = vi.fn();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      vi.spyOn(handler as any, 'sendMessage').mockImplementation(
-        mockedSendMessage,
-      );
-      await TestUtils.addTx(handler, reduced, requiredSings, boxes, dataBoxes);
-
-      vi.setSystemTime(turnStartDelay - 1);
-      await handler.handleMyTurnForTx(txId);
-
-      expect(mockedSendMessage).not.toHaveBeenCalled();
-      const { transaction, release } = await handler.getQueuedTransaction(txId);
-      release();
-      expect(transaction.coordinator).toEqual(-1);
-      expect(transaction.secret).toBeUndefined();
     });
 
     /**
@@ -1521,6 +1534,56 @@ describe('MultiSigHandler', () => {
           .filter((args) => args[0] === MessageType.GenerateCommitment)
           .map((args) => (args[1] as GenerateCommitmentPayload).txId),
       ).toEqual([otherTxId]);
+    });
+
+    /**
+     * @target MultiSigHandler.handleMyTurn should wait for the remaining
+     * start delay of the turn and then start a round
+     * @dependencies MultiSigHandlerInstance
+     * @scenario
+     * - Generate a MultiSigHandler instance
+     * - Call addTx with a test transaction, required signs, boxes, and dataBoxes
+     * - Set system time to one second before the end of the turn 0 start delay
+     * - Call handleMyTurn
+     * - Advance the time to just before the end of the start delay
+     * - Advance the time to the end of the start delay
+     * @expected
+     * - sendMessage should not have been called before the end of the delay
+     * - sendMessage should have been called once with GenerateCommitment
+     * - The tx should have this guard as coordinator and a commitment secret
+     */
+    it('should wait for the remaining start delay of the turn and then start a round', async () => {
+      const handler = await TestUtils.generateMultiSigHandlerInstance(
+        testSecrets[0],
+        vi.fn(),
+        testPubs,
+      );
+      const mockedSendMessage = vi.fn();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.spyOn(handler as any, 'sendMessage').mockImplementation(
+        mockedSendMessage,
+      );
+      await TestUtils.addTx(handler, reduced, requiredSings, boxes, dataBoxes);
+
+      vi.useRealTimers();
+      vi.useFakeTimers();
+      vi.setSystemTime(turnStartDelay - 1000);
+      const handling = handler.handleMyTurn();
+      await vi.advanceTimersByTimeAsync(999);
+      expect(mockedSendMessage).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(1);
+      await handling;
+      vi.useRealTimers();
+
+      expect(mockedSendMessage).toHaveBeenCalledTimes(1);
+      expect(mockedSendMessage.mock.calls[0][0]).toEqual(
+        MessageType.GenerateCommitment,
+      );
+      const { transaction, release } = await handler.getQueuedTransaction(txId);
+      release();
+      expect(transaction.coordinator).toEqual(0);
+      expect(transaction.secret).toBeDefined();
     });
   });
 });

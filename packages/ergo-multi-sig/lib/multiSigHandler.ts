@@ -95,12 +95,27 @@ export class MultiSigHandler extends Communicator {
   };
 
   /**
-   * check if we are in first seconds of the turn or not, so that guards with
-   * slightly delayed clocks also see the new turn when a round starts
+   * check if this guard can start a round: it must be its turn and the start
+   * delay of the turn must be over, so that guards with slightly delayed
+   * clocks also see the new turn when a round starts
+   * @param waitForStartDelay wait for the remaining start delay of the turn
+   * instead of returning false
+   * @returns true if this guard can start a round
    */
-  protected isInTurnStartDelay = (): boolean => {
-    const currentTime = new Date().getTime();
-    return currentTime % this.turnTime < this.turnStartDelay;
+  protected canStartRound = async (
+    waitForStartDelay: boolean,
+  ): Promise<boolean> => {
+    if (!(await this.isMyTurn())) return false;
+    const elapsedTime = new Date().getTime() % this.turnTime;
+    const remainingDelay = Math.max(this.turnStartDelay - elapsedTime, 0);
+    if (remainingDelay > 0) {
+      if (!waitForStartDelay) return false;
+      this.logger.debug(
+        `Waiting [${remainingDelay}] ms for the start delay of the turn before starting a round.`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, remainingDelay));
+    }
+    return true;
   };
 
   /**
@@ -252,7 +267,8 @@ export class MultiSigHandler extends Communicator {
             );
             release();
           }
-          await this.handleMyTurnForTx(txId);
+          if (await this.canStartRound(true))
+            await this.handleMyTurnForTx(txId);
         })
         .catch((e) => {
           this.logger.error(`Error in signing MultiSig transaction: ${e}`);
@@ -890,12 +906,6 @@ export class MultiSigHandler extends Communicator {
     const myInd = await this.getIndex();
 
     if ((await this.isMyTurn()) && transaction.coordinator !== myInd) {
-      if (this.isInTurnStartDelay()) {
-        this.logger.debug(
-          `Postponed starting a round for tx [${txId}] because it's the start delay of the turn.`,
-        );
-        return;
-      }
       this.logger.debug(
         `Initiating sign for tx [${txId}] because it's this guards turn. The correct turn is [${await this.getCurrentTurnId()}]...`,
       );
@@ -923,7 +933,7 @@ export class MultiSigHandler extends Communicator {
    * if it's this peer's turn, handle all transactions in the queue for potential signing
    */
   public handleMyTurn = async () => {
-    if (!(await this.isMyTurn())) return;
+    if (!(await this.canStartRound(true))) return;
     this.logger.debug(
       `Handling my turn for all transactions in the queue. Current turn: ${await this.getCurrentTurnId()}...`,
     );
