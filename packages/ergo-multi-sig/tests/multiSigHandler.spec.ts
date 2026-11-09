@@ -484,6 +484,10 @@ describe('MultiSigHandler', () => {
       );
       const handlers = allHandlers.slice(0, 3);
       await simulatedSender.changeHandlers(handlers);
+      // prevent the coordinator from initiating sign once all commitments are
+      // received, which would change the commitments while they are checked
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.spyOn(handlers[0] as any, 'sendMessage').mockResolvedValue(undefined);
       vi.setSystemTime(0);
       await Promise.all(
         handlers.map((handler) => {
@@ -507,11 +511,15 @@ describe('MultiSigHandler', () => {
         0,
       );
 
+      // commitments are delivered asynchronously, wait for all of them
       const turnHandler = handlers[0];
-      const { transaction } = await turnHandler.getQueuedTransaction(
-        reduced.unsigned_tx().id().to_str(),
-      );
-      expect(Object.values(transaction.commitments).length).toEqual(3);
+      await vi.waitFor(async () => {
+        const { transaction, release } = await turnHandler.getQueuedTransaction(
+          reduced.unsigned_tx().id().to_str(),
+        );
+        release();
+        expect(Object.values(transaction.commitments).length).toEqual(3);
+      });
     });
   });
 

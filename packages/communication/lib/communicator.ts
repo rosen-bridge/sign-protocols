@@ -3,7 +3,11 @@ import { EncryptionHandler } from '@rosen-bridge/encryption';
 
 import { guardMessageValidTimeoutDefault } from './const/const';
 import { CommunicationMessage } from './interfaces/types';
-import { getVersionSections } from './utils';
+import {
+  decodeVersionedSignature,
+  encodeVersionedSignature,
+  getVersionSections,
+} from './utils';
 
 export abstract class Communicator {
   protected logger: AbstractLogger;
@@ -22,7 +26,8 @@ export abstract class Communicator {
    * major component only when this protocol's wire format or message
    * semantics change in a way that's incompatible with older guards; minor
    * and patch changes are assumed compatible. Messages from a peer whose
-   * major version differs are rejected in handleMessage. Classes typically
+   * major version differs are rejected in handleMessage. It is also embedded
+   * in every signature (see {@link signPayload}). Classes typically
    * set this to their own package.json version, e.g.
    * `import packageJson from '../package.json' with { type: 'json' };`.
    */
@@ -80,20 +85,67 @@ export abstract class Communicator {
   };
 
   /**
-   * sign a payload before submit
+   * sign a payload before submit.
+   * returns `<protocolVersion>:<raw signature>`, so it can be verified (even
+   * when relayed) without knowing the signer's version
    * @param payload
    * @param timestamp
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   signPayload = async (payload: any, timestamp: number) => {
     const publicKey = await this.messageEnc.getPk();
-    return await this.messageEnc.sign(
+    const rawSignature = await this.messageEnc.sign(
       Communicator.generatePayloadToSign(
         payload,
         timestamp,
         publicKey,
         this.protocolVersion,
       ),
+    );
+    return encodeVersionedSignature(this.protocolVersion, rawSignature);
+  };
+
+  /**
+   * verify a signature produced by signPayload (received directly or relayed)
+   * against the version embedded in it. Signatures with a different major
+   * version are rejected, as they belong to an incompatible protocol.
+   * @param payload
+   * @param timestamp
+   * @param publicKey signer public key
+   * @param signature `<version>:<raw signature>`
+   */
+  protected verifyPayloadSignatureAndVersion = async (
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    payload: any,
+    timestamp: number,
+    publicKey: string,
+    signature: string,
+  ): Promise<boolean> => {
+    const decoded = decodeVersionedSignature(signature);
+    if (!decoded) {
+      this.logger.debug(
+        `signature [${signature}] does not contain a protocol version`,
+      );
+      return false;
+    }
+    if (
+      getVersionSections(decoded.version).major !==
+      getVersionSections(this.protocolVersion).major
+    ) {
+      this.logger.debug(
+        `signature protocol version [${decoded.version}] is not compatible with [${this.protocolVersion}]`,
+      );
+      return false;
+    }
+    return this.messageEnc.verify(
+      Communicator.generatePayloadToSign(
+        payload,
+        timestamp,
+        publicKey,
+        decoded.version,
+      ),
+      decoded.rawSignature,
+      publicKey,
     );
   };
 
@@ -181,16 +233,19 @@ export abstract class Communicator {
       this.logger.debug(message);
       return;
     }
+    if (decodeVersionedSignature(msg.sign)?.version !== msg.version) {
+      this.logger.warn(
+        'Invalid message. Message version does not match its signature version',
+      );
+      this.logger.debug(message);
+      return;
+    }
     if (
-      !(await this.messageEnc.verify(
-        Communicator.generatePayloadToSign(
-          msg.payload,
-          msg.timestamp,
-          msg.publicKey,
-          msg.version ?? '',
-        ),
-        msg.sign,
+      !(await this.verifyPayloadSignatureAndVersion(
+        msg.payload,
+        msg.timestamp,
         guardPk,
+        msg.sign,
       ))
     ) {
       this.logger.warn('Invalid message. Message signature is invalid');

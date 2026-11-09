@@ -12,6 +12,8 @@ import {
 } from '../../lib';
 
 export class TestTssSigner extends TssSigner {
+  protected readonly protocolVersion = '1.0.0';
+
   /**
    * get list of signs in current object
    */

@@ -794,15 +794,11 @@ export abstract class TssSigner extends Communicator {
           if (index === -1) return undefined;
           const sign = signs[index];
           if (sign === '') return undefined;
-          const verifiedSign = await this.messageEnc.verify(
-            TssSigner.generatePayloadToSign(
-              payload,
-              timestamp,
-              guard.publicKey,
-              this.protocolVersion,
-            ),
-            sign,
+          const verifiedSign = await this.verifyPayloadSignatureAndVersion(
+            payload,
+            timestamp,
             guard.publicKey,
+            sign,
           );
           return verifiedSign ? guard : undefined;
         }),
