@@ -7,6 +7,9 @@ import { TestCommunicator } from './testCommunicator';
 describe('Communicator', () => {
   // must match TestCommunicator's protocolVersion
   const protocolVersion = '1.0.0';
+  const majorProtocolVersionChange = '2.0.0';
+  const minorProtocolVersionChange = '1.1.0';
+  const patchProtocolVersionChange = '1.0.1';
   let guardMessageEncs: Array<EdDSA>;
   let guardPks: Array<string>;
   const payload = { foo: 'bar' };
@@ -307,11 +310,10 @@ describe('Communicator', () => {
     it('should not call processMessage when protocol major version differs', async () => {
       const currentTime = 1685683146;
       const publicKey = await guardMessageEncs[2].getPk();
-      const otherVersion = '2.0.0'; // different major than protocolVersion
       const sign = await signVersioned(
         guardMessageEncs[2],
-        `${JSON.stringify(payload)}${currentTime}${publicKey}${otherVersion}`,
-        otherVersion,
+        `${JSON.stringify(payload)}${currentTime}${publicKey}${majorProtocolVersionChange}`,
+        majorProtocolVersionChange,
       );
       vi.spyOn(Date, 'now').mockReturnValue(currentTime * 1000);
       const message = {
@@ -321,7 +323,7 @@ describe('Communicator', () => {
         timestamp: currentTime,
         sign: sign,
         index: 2,
-        version: otherVersion,
+        version: majorProtocolVersionChange,
       };
       await communicator.handleMessage(JSON.stringify(message), 'guardIndex2');
       expect(communicator.processMessage).toHaveBeenCalledTimes(0);
@@ -339,11 +341,10 @@ describe('Communicator', () => {
     it('should call processMessage when only the minor/patch protocol version differs', async () => {
       const currentTime = 1685683148;
       const publicKey = await guardMessageEncs[2].getPk();
-      const otherVersion = `${protocolVersion.split('.')[0]}.9.9`; // same major, different minor/patch
       const sign = await signVersioned(
         guardMessageEncs[2],
-        `${JSON.stringify(payload)}${currentTime}${publicKey}${otherVersion}`,
-        otherVersion,
+        `${JSON.stringify(payload)}${currentTime}${publicKey}${minorProtocolVersionChange}`,
+        minorProtocolVersionChange,
       );
       vi.spyOn(Date, 'now').mockReturnValue(currentTime * 1000);
       const message = {
@@ -353,7 +354,7 @@ describe('Communicator', () => {
         timestamp: currentTime,
         sign: sign,
         index: 2,
-        version: otherVersion,
+        version: minorProtocolVersionChange,
       };
       await communicator.handleMessage(JSON.stringify(message), 'guardIndex2');
       expect(communicator.processMessage).toHaveBeenCalledOnce();
@@ -374,16 +375,15 @@ describe('Communicator', () => {
       const rawSignature = await guardMessageEncs[2].sign(
         `${JSON.stringify(payload)}${currentTime}${publicKey}${protocolVersion}`,
       );
-      const tamperedVersion = `${protocolVersion.split('.')[0]}.9.9`;
       vi.spyOn(Date, 'now').mockReturnValue(currentTime * 1000);
       const message = {
         type: 'message',
         payload: payload,
         publicKey,
         timestamp: currentTime,
-        sign: `${tamperedVersion}:${rawSignature}`,
+        sign: `${minorProtocolVersionChange}:${rawSignature}`,
         index: 2,
-        version: tamperedVersion,
+        version: minorProtocolVersionChange,
       };
       await communicator.handleMessage(JSON.stringify(message), 'guardIndex2');
       expect(communicator.processMessage).toHaveBeenCalledTimes(0);
@@ -414,7 +414,7 @@ describe('Communicator', () => {
         timestamp: currentTime,
         sign: signature,
         index: 2,
-        version: `${protocolVersion.split('.')[0]}.9.9`,
+        version: minorProtocolVersionChange,
       };
       await communicator.handleMessage(JSON.stringify(message), 'guardIndex2');
       expect(communicator.processMessage).toHaveBeenCalledTimes(0);
@@ -494,11 +494,10 @@ describe('Communicator', () => {
      * - must return true
      */
     it('should verify a signature with same major and different minor/patch', async () => {
-      const otherVersion = `${protocolVersion.split('.')[0]}.9.9`;
       const signature = await signVersioned(
         guardMessageEncs[2],
-        `${JSON.stringify(payload)}${timestamp}${guardPks[2]}${otherVersion}`,
-        otherVersion,
+        `${JSON.stringify(payload)}${timestamp}${guardPks[2]}${patchProtocolVersionChange}`,
+        patchProtocolVersionChange,
       );
       await expect(
         communicator.callVerifyPayloadSignatureAndVersion(
@@ -520,11 +519,10 @@ describe('Communicator', () => {
      * - must return false
      */
     it('should reject a valid signature with a different major', async () => {
-      const otherVersion = '2.0.0';
       const signature = await signVersioned(
         guardMessageEncs[2],
-        `${JSON.stringify(payload)}${timestamp}${guardPks[2]}${otherVersion}`,
-        otherVersion,
+        `${JSON.stringify(payload)}${timestamp}${guardPks[2]}${majorProtocolVersionChange}`,
+        majorProtocolVersionChange,
       );
       await expect(
         communicator.callVerifyPayloadSignatureAndVersion(
@@ -550,13 +548,12 @@ describe('Communicator', () => {
       const rawSignature = await guardMessageEncs[2].sign(
         `${JSON.stringify(payload)}${timestamp}${guardPks[2]}${protocolVersion}`,
       );
-      const tamperedVersion = `${protocolVersion.split('.')[0]}.9.9`;
       await expect(
         communicator.callVerifyPayloadSignatureAndVersion(
           payload,
           timestamp,
           guardPks[2],
-          `${tamperedVersion}:${rawSignature}`,
+          `${minorProtocolVersionChange}:${rawSignature}`,
         ),
       ).resolves.toBe(false);
     });

@@ -10,7 +10,6 @@ import {
   requestMessage,
   startMessage,
 } from '../../lib/const/signer';
-import packageJson from '../../package.json' with { type: 'json' };
 import { generateSigners } from '../testUtils';
 import { TestTssSigner } from './testTssSigner';
 
@@ -21,6 +20,11 @@ describe('TssSigner', () => {
   let detection: GuardDetection;
   const currentTime = 1686286005068;
   const timestamp = Math.floor(currentTime / 1000);
+  // must match TestTssSigner's protocolVersion
+  const protocolVersion = '1.0.0';
+  const majorProtocolVersionChange = '2.0.0';
+  const minorProtocolVersionChange = '1.1.0';
+  const patchProtocolVersionChange = '1.0.1';
 
   beforeEach(async () => {
     const signers = await generateSigners();
@@ -2302,7 +2306,7 @@ describe('TssSigner', () => {
           msg: 'testing message',
           initGuardIndex: 1,
         },
-        Array(10).fill(`${packageJson.version}:random-signature`),
+        Array(10).fill(`${protocolVersion}:random-signature`),
       );
       expect(res.length).toEqual(1);
       expect(res).toEqual(guards);
@@ -2313,19 +2317,18 @@ describe('TssSigner', () => {
      * signature version has the same major
      * @dependencies
      * @scenario
-     * - sign approve payload by four guards with: a newer patch, a newer minor,
-     *   the same version and a newer major
+     * - sign approve payload by four guards with: a patch change, a minor change,
+     *   the same version and a major change
      * - call function with the four guards and their signatures
      * @expected
      * - returned list must contain the first three guards only
      */
     it('should return only guards whose signature version has the same major', async () => {
-      const [major, minor, patch] = packageJson.version.split('.').map(Number);
       const versions = [
-        `${major}.${minor}.${patch + 1}`,
-        `${major}.${minor + 1}.0`,
-        `${major}.${minor}.${patch}`,
-        `${major + 1}.0.0`,
+        patchProtocolVersionChange,
+        minorProtocolVersionChange,
+        protocolVersion,
+        majorProtocolVersionChange,
       ];
       const guards = await Promise.all(
         versions.map(async (_, i) => ({
