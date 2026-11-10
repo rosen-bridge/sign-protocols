@@ -114,8 +114,8 @@ interface ErgoMultiSigConfig {
   messageEnc: EncryptionHandler;
   secretHex: string;
   txSignTimeout: number;
-  multiSigFirstSignDelay?: number;
   turnTime?: number;
+  turnStartDelay?: number;
   submit: (msg: string, peers: Array<string>) => unknown;
   guardDetection: GuardDetection;
   commGuardsPk: Array<string>;

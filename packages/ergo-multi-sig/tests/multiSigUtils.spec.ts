@@ -3,9 +3,13 @@ import fs from 'fs';
 import path from 'path';
 import { describe, expect, it } from 'vitest';
 
-import { mockedErgoStateContext } from '@rosen-bridge/ergo-multi-sig/tests/testData';
-
 import { MultiSigUtils } from '../lib';
+import {
+  differentPublishedCommitments,
+  malformedPublishedCommitments,
+  mockedErgoStateContext,
+  publishedCommitment,
+} from './testData';
 
 describe('MultiSigUtils', () => {
   describe('publicKeyToProposition', () => {
@@ -248,6 +252,86 @@ describe('MultiSigUtils', () => {
         secondCommitments,
       );
       expect(res).toEqual(false);
+    });
+  });
+
+  describe('isSamePublishedCommitment', () => {
+    /**
+     * @target MultiSigUtils.isSamePublishedCommitment should return true when
+     * two published commitments are same
+     * @dependencies
+     * @scenario
+     * - use a published commitment from test data and a copy of it
+     * - run test
+     * - check returned value
+     * @expected
+     * - returned value should be true
+     */
+    it('should return true when two published commitments are same', () => {
+      const res = MultiSigUtils.isSamePublishedCommitment(
+        publishedCommitment,
+        structuredClone(publishedCommitment),
+      );
+      expect(res).toEqual(true);
+    });
+
+    /**
+     * @target MultiSigUtils.isSamePublishedCommitment should return false when
+     * two published commitments are different
+     * @dependencies
+     * @scenario
+     * - use published commitments from test data which differ from the base
+     *   one in a value, a position, the hints order, the hints count, an extra
+     *   input and a missing input
+     * - run test for each of them in both argument orders
+     * - check returned values
+     * @expected
+     * - returned values should be false
+     */
+    it('should return false when two published commitments are different', () => {
+      differentPublishedCommitments.forEach((differentCommitment) => {
+        expect(
+          MultiSigUtils.isSamePublishedCommitment(
+            publishedCommitment,
+            differentCommitment,
+          ),
+        ).toEqual(false);
+        expect(
+          MultiSigUtils.isSamePublishedCommitment(
+            differentCommitment,
+            publishedCommitment,
+          ),
+        ).toEqual(false);
+      });
+    });
+
+    /**
+     * @target MultiSigUtils.isSamePublishedCommitment should return false for
+     * missing or malformed published commitments
+     * @dependencies
+     * @scenario
+     * - use malformed published commitments from test data: undefined, a
+     *   non-array input and null hints
+     * - run test against the base commitment in both argument orders
+     * - check returned values
+     * @expected
+     * - returned values should be false without throwing
+     */
+    it('should return false for missing or malformed published commitments', () => {
+      malformedPublishedCommitments.forEach((malformedCommitment) => {
+        expect(
+          MultiSigUtils.isSamePublishedCommitment(
+            publishedCommitment,
+            malformedCommitment,
+          ),
+        ).toEqual(false);
+        expect(
+          MultiSigUtils.isSamePublishedCommitment(
+            malformedCommitment,
+            publishedCommitment,
+          ),
+        ).toEqual(false);
+      });
     });
   });
 

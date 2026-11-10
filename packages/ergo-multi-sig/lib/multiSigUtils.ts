@@ -294,6 +294,38 @@ export class MultiSigUtils {
   };
 
   /**
+   * check if two published commitments are exactly the same
+   * @param first first published commitment
+   * @param second second published commitment
+   */
+  static isSamePublishedCommitment = (
+    first: PublishedCommitment | undefined,
+    second: PublishedCommitment | undefined,
+  ): boolean => {
+    if (!first || !second) return false;
+    const inputIndexes = Object.keys(first);
+    if (inputIndexes.length !== Object.keys(second).length) return false;
+    return inputIndexes.every((inputIndex) => {
+      const firstHints = first[inputIndex];
+      const secondHints = second[inputIndex];
+      return (
+        Array.isArray(firstHints) &&
+        Array.isArray(secondHints) &&
+        firstHints.length === secondHints.length &&
+        firstHints.every((hint, i) => {
+          const otherHint = secondHints[i];
+          return (
+            !!hint &&
+            !!otherHint &&
+            hint.a === otherHint.a &&
+            hint.position === otherHint.position
+          );
+        })
+      );
+    });
+  };
+
+  /**
    * Convert hint bag to published commitments
    * @param hintBag hint bag
    * @param pubs public key

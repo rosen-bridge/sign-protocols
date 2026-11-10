@@ -11,7 +11,6 @@ class TestConfigs {
   static guardIndex = 1;
   static requiredSigns = 3;
   static txSignTimeout = 1;
-  static multiSigFirstSignDelay = 3;
 }
 
 export default TestConfigs;
